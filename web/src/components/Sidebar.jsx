@@ -26,7 +26,10 @@ export default function Sidebar({
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editingFeedId, setEditingFeedId] = useState(null);
   const [editFeedName, setEditFeedName] = useState("");
-  const [collapsedIds, setCollapsedIds] = useState(() => new Set());
+  // Tracks which sections have been explicitly expanded — anything not in here starts
+  // (and stays, until toggled) collapsed by default, including categories that haven't
+  // loaded yet at mount time or get added later.
+  const [expandedIds, setExpandedIds] = useState(() => new Set());
   // undefined = no add-feed form open; null = open for Uncategorized; number = open for that category
   const [addFeedTarget, setAddFeedTarget] = useState(undefined);
   const [addFeedUrl, setAddFeedUrl] = useState("");
@@ -38,7 +41,7 @@ export default function Sidebar({
   const uncategorized = feedsForCategory(null);
 
   function toggleCollapsed(key) {
-    setCollapsedIds((prev) => {
+    setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -226,7 +229,7 @@ export default function Sidebar({
     }
   }
 
-  const uncategorizedCollapsed = collapsedIds.has("uncategorized");
+  const uncategorizedCollapsed = !expandedIds.has("uncategorized");
 
   return (
     <nav className="sidebar">
@@ -279,7 +282,7 @@ export default function Sidebar({
       <ul className="category-list">
         {categories.map((cat) => {
           const key = `cat-${cat.id}`;
-          const collapsed = collapsedIds.has(key);
+          const collapsed = !expandedIds.has(key);
           return (
             <li key={cat.id} {...dropZoneProps(key, cat.id)}>
               {editingCategoryId === cat.id ? (
