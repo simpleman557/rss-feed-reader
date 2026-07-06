@@ -192,6 +192,19 @@ function updateFeedTitle(feedId, title) {
   normalizeFeedBucketOrder(categoryId);
 }
 
+// Two different feeds can legitimately share the same real-world title (e.g. two
+// editions of the same publication), so an auto-synced title that collides with a
+// sibling's in the same bucket gets a " (2)", " (3)", etc. suffix instead of silently
+// producing two identically-named feeds. Manual renames already reject collisions
+// outright via renameFeed; this just gives auto-sync a non-colliding default instead.
+function uniqueTitleInBucket(bucket, title) {
+  const taken = new Set(bucket.map((f) => normalizeName(f.title)));
+  if (!taken.has(normalizeName(title))) return title;
+  let n = 2;
+  while (taken.has(normalizeName(`${title} (${n})`))) n++;
+  return `${title} (${n})`;
+}
+
 // Runs on every successful refresh. The feed's title is only adopted from the feed
 // itself the first time (while our stored title is still the URL placeholder set at
 // creation) — once it has a real title, whether from that first sync or a manual
@@ -208,9 +221,10 @@ export function syncFeedMetadata(feedId, title, feedImageUrl) {
 
   const categoryId = feed.categoryId ?? null;
   const bucket = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId);
-  const order = findAlphabeticalOrder(bucket, (f) => f.title, title);
+  const uniqueTitle = uniqueTitleInBucket(bucket, title);
+  const order = findAlphabeticalOrder(bucket, (f) => f.title, uniqueTitle);
   db.prepare('UPDATE feeds SET title = ?, feedImageUrl = ?, "order" = ? WHERE id = ?').run(
-    title,
+    uniqueTitle,
     feedImageUrl ?? null,
     order,
     feedId
