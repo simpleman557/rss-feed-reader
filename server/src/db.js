@@ -192,13 +192,20 @@ function updateFeedTitle(feedId, title) {
   normalizeFeedBucketOrder(categoryId);
 }
 
-// Runs on every successful refresh (unlike updateFeedTitle, which is only for the
-// validated manual-rename path) — keeps the title's alphabetical position in sync and
-// unconditionally refreshes the feed's image, since the image can change independent
-// of the title.
+// Runs on every successful refresh. The feed's title is only adopted from the feed
+// itself the first time (while our stored title is still the URL placeholder set at
+// creation) — once it has a real title, whether from that first sync or a manual
+// rename, refreshes must never clobber it. feedImageUrl has no such placeholder state
+// and always re-syncs, since the image can change independent of the title.
 export function syncFeedMetadata(feedId, title, feedImageUrl) {
   const feed = db.prepare("SELECT * FROM feeds WHERE id = ?").get(feedId);
   if (!feed) return;
+
+  if (feed.title !== feed.url) {
+    db.prepare("UPDATE feeds SET feedImageUrl = ? WHERE id = ?").run(feedImageUrl ?? null, feedId);
+    return;
+  }
+
   const categoryId = feed.categoryId ?? null;
   const bucket = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId);
   const order = findAlphabeticalOrder(bucket, (f) => f.title, title);
