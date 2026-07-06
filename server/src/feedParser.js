@@ -60,10 +60,22 @@ function itemImageUrl(item) {
   return firstImgSrc(item.contentEncoded) || firstImgSrc(item.content);
 }
 
+// A browser-like User-Agent, and fetching the XML ourselves rather than letting
+// rss-parser do it (it uses Node's older http/https module internally, which some
+// sites block via bot-protection that fingerprints the connection itself — a real
+// User-Agent header alone doesn't get past it, but Node's built-in fetch() does).
+const FEED_FETCH_USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
 // Fetches and normalizes an RSS/Atom feed. Shared by the public /api/feed route and
 // the server-side refresh flow, so both use identical parsing/image-extraction logic.
 export async function fetchAndParseFeed(url) {
-  const feed = await parser.parseURL(url);
+  const res = await fetch(url, { headers: { "User-Agent": FEED_FETCH_USER_AGENT } });
+  if (!res.ok) {
+    throw new Error(`Status code ${res.status}`);
+  }
+  const xml = await res.text();
+  const feed = await parser.parseString(xml);
   return {
     title: feed.title || url,
     feedImageUrl: feed.image?.url || faviconFallback(feed.link, url),
