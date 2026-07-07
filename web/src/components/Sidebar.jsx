@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { buildOPML } from "../data/opml";
+import { PLACEHOLDER_ICON } from "../placeholderIcon";
 
 export default function Sidebar({
   categories,
@@ -144,7 +145,16 @@ export default function Sidebar({
             onDragEnd={() => setIsDraggingFeed(false)}
             onClick={() => onSelectFeed(f.id)}
           >
-            {f.title}
+            <img
+              className="feed-icon"
+              src={f.feedImageUrl || PLACEHOLDER_ICON}
+              alt=""
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.src = PLACEHOLDER_ICON;
+              }}
+            />
+            <span className="feed-title-text">{f.title}</span>
           </button>
           <button className="edit-feed-btn" title="Edit feed" onClick={() => startEditingFeed(f)}>
             ✎
