@@ -9,6 +9,7 @@ A self-hosted, minimal alternative to Feedly. Local-first in the sense of no use
 - `GET /api/feed?url=<feedUrl>` — fetches the given RSS/Atom URL server-side (avoids the browser CORS restriction that blocks fetching arbitrary third-party feeds directly from client JS), parses it with `rss-parser`, returns normalized JSON: `{ title, feedImageUrl, link, items: [{ title, link, guid, isoDate, contentSnippet, imageUrl }] }`. Validates `url` is present, a well-formed URL, and `http`/`https` only; 400 on bad input, 502 if the fetch/parse itself fails. The actual parsing/image-extraction logic lives in `server/src/feedParser.js`, shared with the refresh routes below so there's one implementation, not two.
 - `contentSnippet` (used as the "one sentence more than the headline") comes straight from the feed's own description/summary field, truncated to 280 chars — no AI summarization involved.
 - Persistence routes under `/api/categories`, `/api/feeds`, `/api/articles`, and `/api/refresh` — see **API** below.
+- `fetchAndParseFeed()` fetches the feed XML itself via Node's built-in `fetch()` (with a browser-like `User-Agent`) and hands the text to `rss-parser`'s `parseString()`, rather than letting `rss-parser` fetch the URL itself (it uses Node's older `http`/`https` module internally). Some sites (e.g. Cricinfo) block that older client outright regardless of headers sent — confirmed to be connection/TLS fingerprinting, not a `User-Agent` check, since Node's `fetch()` gets through with no special headers at all. Sites running an active bot-challenge system (e.g. ESPN's main site, which returns an empty `202` with `x-amzn-waf-action: challenge`) are a separate, harder wall this doesn't solve — that needs a real JS-executing browser to pass, which is out of scope here.
 
 **`web/`** — Vite + React SPA.
 - Dev server proxies `/api/*` to `http://localhost:3001` (see `vite.config.js`), so the frontend never needs to know the backend's port directly.
@@ -100,7 +101,7 @@ anchor = max(base, readAt if set, unsavedAt if set)
 ```
 Deleted once `now > anchor + 30 days`. So: never-read articles expire 30 days after publish; read articles get 30 days from the moment they were read (not published); an article that was saved and later unsaved gets a fresh 30-day grace period from the moment it was unsaved, regardless of how old it already was — this guarantees an accidental unsave can never delete something with zero grace period.
 
-**Trigger**: runs server-side inside `POST /api/refresh` (`server/src/routes/refresh.js`), so it fires on every manual Refresh and every auto-refresh tick, including the one that fires immediately on app mount (see Auto-refresh below). Because expired articles are actually gone, Today/All/Read Articles need no extra date-range filtering. Read Later is entirely unaffected by retention, by design.
+**Trigger**: runs server-side inside `POST /api/refresh` (`server/src/routes/refresh.js`), so it fires on every manual Refresh and every auto-refresh tick, including the one that fires immediately on app mount (see Auto-refresh below). Because expired articles are actually gone, the browse list/Today/Read Articles need no extra date-range filtering. Read Later is entirely unaffected by retention, by design.
 
 ## Auto-refresh
 
@@ -112,25 +113,34 @@ Client-side only (`web/src/data/opml.js`'s `buildOPML(categories, feeds)`, a pur
 
 ## Sidebar (top to bottom)
 
-1. **All Feeds** — clears any category/feed selection and exits Read Articles mode. The default/home view.
-2. **Read Articles** — shows every article where `read === true`, app-wide, ignoring whatever category/feed was previously selected; sorts on `readAt` (not `isoDate`) — see Sort below. Selecting any category, feed, or All Feeds exits this mode.
-3. **Uncategorized** — feeds with no category. Only rendered if it currently has feeds, **or** a feed is actively being dragged (so it can appear as a valid drop target to decategorize something, even if it would otherwise be empty). Has its own collapse toggle and "+" add-feed button.
-4. A visual divider.
-5. **Category list** (alphabetical, auto-ordered as described above). Each category row has, revealed on hover: a collapse/expand chevron (▾/▸, always visible unlike the others), an "add feed" (+) button opening an inline URL-only form scoped to that category, and an edit (✎) button opening an inline panel with rename + "Delete category" (deleting a category does **not** delete its feeds — they fall back to Uncategorized).
-6. **Feeds within each category** — each is a draggable button (drag onto a different category header, or onto Uncategorized, to recategorize it — dropping is the only interaction; there is no drag-to-reorder within a list). Each feed has its own edit (✎) button opening a panel with rename, a read-only display of the feed's actual RSS URL, and "Delete feed" (also deletes that feed's articles).
-7. **+ Add Category** button, then **Export OPML** button, at the bottom of the category list.
+1. **All Feeds** — clears any category/feed selection and switches to the plain unread browse list (what the removed "All" tab used to show). The default/home view.
+2. **Today** — a digest, not a filter combinable with a category/feed selection (see Today below for details).
+3. **Read Later** — saved articles, app-wide, ignoring whatever category/feed was previously selected (like Read Articles below) — regardless of read status or age, the only view unaffected by both the read-hides-it rule and the 30-day retention purge.
+4. **Read Articles** — shows every article where `read === true`, app-wide, ignoring whatever category/feed was previously selected; sorts on `readAt` (not `isoDate`) — see Sort below.
+5. Selecting any category, feed, or All Feeds exits Today/Read Later/Read Articles and switches to the plain unread browse list, scoped to whatever was selected (or unscoped, for All Feeds).
+6. **Uncategorized** — feeds with no category. Only rendered if it currently has feeds, **or** a feed is actively being dragged (so it can appear as a valid drop target to decategorize something, even if it would otherwise be empty). Has its own collapse toggle and "+" add-feed button. Collapsed by default, like every category (see below).
+7. A visual divider.
+8. **Category list** (alphabetical, auto-ordered as described above). Each category row has, revealed on hover: a collapse/expand chevron (▾/▸, always visible unlike the others), an "add feed" (+) button opening an inline URL-only form scoped to that category, and an edit (✎) button opening an inline panel with rename + "Delete category" (deleting a category does **not** delete its feeds — they fall back to Uncategorized). Categories (and Uncategorized) start **collapsed by default** — nothing expands until its chevron is clicked, and this resets on every reload since expand/collapse state isn't persisted (see Known Gaps).
+9. **Feeds within each category** — each is a draggable button (drag onto a different category header, or onto Uncategorized, to recategorize it — dropping is the only interaction; there is no drag-to-reorder within a list), showing the feed's logo (`feedImageUrl`, falling back to the same placeholder icon article thumbnails use if missing or broken) before its title. Each feed has its own edit (✎) button opening a panel with rename, a read-only display of the feed's actual RSS URL, and "Delete feed" (also deletes that feed's articles).
+10. **+ Add Category** button, then **Export OPML** button, at the bottom of the category list.
 
 Both category and feed rename/create actions validate uniqueness (name, and — for feeds — normalized URL) and the reserved name, surfacing violations via a blocking `window.alert` fed by the API's `400 { error }` responses. Deletions require `window.confirm`.
+
+## Today
+
+A digest rather than a filtered list: unread articles published today (bounded by local-timezone midnight on the article's `isoDate`; an article with a missing/unparseable `isoDate` never appears here), grouped by category (`App.jsx`'s `todayGroups`, rendered by `TodayDigest.jsx`):
+- Named categories are sorted alphabetically; an "Uncategorized" group is appended last if any uncategorized feed has an eligible article.
+- Each group is capped to its **10** most-recent-or-oldest eligible articles, per the active Sort direction (see below) — Sort governs both which 10 make the cut and their order within the group.
+- Each named category's heading is a button that jumps straight into that category's normal full unread list (exiting Today). The Uncategorized group's heading is a plain, non-clickable label, consistent with the sidebar's own Uncategorized label (see Known Gaps).
+- Ranking is by recency, not popularity — RSS feeds carry no click/pageview data, and there's no reliable free source for a link's real internet-wide "hits."
 
 ## Main content area (top bar + article list)
 
 **Top bar**, left to right:
-- View tabs: **Today** / **All** / **Read Later**.
-  - *Today*: unread articles published today, bounded by local-timezone midnight on the article's `isoDate`. An article with a missing/unparseable `isoDate` never appears here (still shows in All).
-  - *All*: unread articles (once opened, an article leaves this view — see Read Articles above).
-  - *Read Later*: saved articles, regardless of read status or age — the only view unaffected by both the read-hides-it rule and the 30-day retention purge.
-- Sort dropdown: Newest first / Oldest first. Chooses only the *direction*; the *timestamp sorted on* is owned by the active view — `readAt` in Read Articles, `isoDate` everywhere else. So "Newest first" means most-recently-*read* first in Read Articles, most-recently-*published* first everywhere else.
+- Sort dropdown: Newest first / Oldest first. Chooses only the *direction*; the *timestamp sorted on* is owned by the active view — `readAt` in Read Articles, `isoDate` everywhere else, including within each of Today's per-category groups.
 - Refresh button — triggers `POST /api/refresh`, which re-fetches every subscribed feed concurrently server-side, merges new articles in, runs the retention purge, and returns an error count if any feed(s) failed. A feed that fails on its *initial* add is still kept (not rolled back).
+
+There are no view tabs in the top bar — Today, Read Later, and Read Articles all live in the sidebar (see above).
 
 **Article item**: a thumbnail image (see Images above, with graceful fallback), title (opens the real article in a new tab and marks it read on click — no separate "mark read" affordance), feed name + formatted date, the one-sentence snippet, and a save/★ toggle for Read Later.
 
@@ -144,12 +154,16 @@ Both category and feed rename/create actions validate uniqueness (name, and — 
 - If/when sorting or reordering controls are revisited, the underlying data model (per-bucket `order` fields, `findAlphabeticalOrder`, `normalizeCategoryOrder`, `normalizeFeedBucketOrder` in `db.js`) already supports it — only the UI layer was stripped.
 - **Duplicate feed URLs across categories** were originally allowed by design, then deliberately reversed in favor of global uniqueness once the implications (independent read/saved state per duplicate) were worked through.
 - **Per-article images** went through two passes: the first (spec'd) version only checked `enclosure` and `media:content`, which left most real-world feeds (NPR, BBC, The Verge) showing only the generic feed icon. Empirically testing against six real feeds side-by-side surfaced the actual variety of publisher conventions, leading to the six-tier fallback chain documented above. TechCrunch remains a hard gap (no image data in its feed in any form) — a deliberate, documented limitation, not an oversight.
+- **Feed fetching hardened against connection-fingerprint bot-blocking**: some sites (Cricinfo) returned a flat `403` to `rss-parser`'s built-in fetching no matter what `User-Agent` was sent, traced to TLS/connection fingerprinting rather than headers — fixed by fetching via Node's built-in `fetch()` instead and handing the XML to `rss-parser` to just parse (see Architecture above). A different site (ESPN's main site) turned out to be behind an active AWS WAF JS challenge, which requires a real browser to solve — explicitly not something to build around; that feed was just removed.
+- **Sidebar categories (and Uncategorized) now collapse by default** instead of starting all-expanded — the tracked state inverted from "which sections are collapsed" (default: none) to "which sections have been explicitly expanded" (default: none), so anything untouched, including categories that load in after mount or get added later, starts collapsed.
+- **Feed logos** were added to the sidebar before each feed's name, reusing the same placeholder-icon fallback (extracted into `web/src/placeholderIcon.js`) already used for article thumbnails.
+- **Today redesigned from a flat filtered list into a per-category digest**, and the top-bar view tabs (Today/All/Read Later) were removed in favor of sidebar nav items alongside Read Articles. This was prompted by a request to rank each category's top 10 by "hits" — since that data doesn't exist for RSS feeds, ranking is by recency instead (confirmed with the user). Read Later became a global view (like Read Articles) rather than a filter combinable with a category/feed selection, matching its new position in the sidebar.
 
 ## Known gaps / not implemented
 
-- Clicking the "Uncategorized" label does not filter the article list to just uncategorized feeds (unlike clicking a real category) — it's a static label, not a button.
+- Clicking the "Uncategorized" label — in the sidebar, or in Today's digest — does not filter/link to just uncategorized feeds (unlike clicking a real category) — it's a static label, not a button, in both places.
 - No way to add a brand-new feed with no category directly if Uncategorized is currently hidden (empty) — you'd add it to a category first, then drag it onto the (drag-revealed) Uncategorized zone.
-- No persistence of sidebar collapse/expand state across page reloads (resets to all-expanded).
+- No persistence of sidebar collapse/expand state across page reloads (resets to all-collapsed, the current default — see Recent History).
 - No backfill mechanism for existing articles' `imageUrl`/`feedImageUrl` when extraction logic improves — only new articles benefit (see Images above).
 - No schema migration framework — `server/src/db.js` runs idempotent `CREATE TABLE IF NOT EXISTS` on every start, which is sufficient for a fresh build with no data to preserve across schema changes, but would need real migrations before changing the schema on a database that already has real data in it.
 - **OPML import** — deliberately deferred; export-only for now.
