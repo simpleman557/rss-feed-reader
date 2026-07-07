@@ -10,6 +10,8 @@ export default function Sidebar({
   view,
   onSelectCategory,
   onSelectFeed,
+  onSelectToday,
+  onSelectReadLater,
   onSelectReadArticles,
   onAddFeed,
   onAddCategory,
@@ -245,13 +247,25 @@ export default function Sidebar({
     <nav className="sidebar">
       <button
         className={`sidebar-item all-item ${
-          selectedCategoryId === null && selectedFeedId === null && view !== "readArticles"
-            ? "active"
-            : ""
+          view === "all" && selectedCategoryId === null && selectedFeedId === null ? "active" : ""
         }`}
         onClick={() => onSelectCategory(null)}
       >
         All Feeds
+      </button>
+
+      <button
+        className={`sidebar-item ${view === "today" ? "active" : ""}`}
+        onClick={onSelectToday}
+      >
+        Today
+      </button>
+
+      <button
+        className={`sidebar-item ${view === "readLater" ? "active" : ""}`}
+        onClick={onSelectReadLater}
+      >
+        Read Later
       </button>
 
       <button

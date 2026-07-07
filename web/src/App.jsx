@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ArticleList from "./components/ArticleList";
+import TodayDigest from "./components/TodayDigest";
 import {
   getCategories,
   getFeeds,
@@ -76,7 +77,16 @@ export default function App() {
       );
     }
 
-    let list = articles;
+    if (view === "readLater") {
+      return sortByField(
+        articles.filter((a) => a.saved),
+        sort,
+        byIsoDate
+      );
+    }
+
+    // Browse mode: unread articles, optionally scoped to a selected feed/category.
+    let list = articles.filter((a) => !a.read);
 
     if (selectedFeedId !== null) {
       list = list.filter((a) => a.feedId === selectedFeedId);
@@ -85,27 +95,58 @@ export default function App() {
       list = list.filter((a) => feedIds.has(a.feedId));
     }
 
-    if (view === "today") {
-      list = list.filter((a) => isToday(a.isoDate) && !a.read);
-    } else if (view === "readLater") {
-      list = list.filter((a) => a.saved);
-    } else if (view === "all") {
-      list = list.filter((a) => !a.read);
-    }
-
     return sortByField(list, sort, byIsoDate);
   }, [articles, view, sort, selectedCategoryId, selectedFeedId, feeds]);
+
+  // Today digest: unread articles published today, grouped by category (named
+  // categories sorted alphabetically, Uncategorized last), each capped to the top 10
+  // by the current sort direction. Only computed while Today is the active view.
+  const todayGroups = useMemo(() => {
+    if (view !== "today") return [];
+
+    const byCategoryId = new Map();
+    for (const a of articles) {
+      if (a.read || !isToday(a.isoDate)) continue;
+      const categoryId = feedsById.get(a.feedId)?.categoryId ?? null;
+      if (!byCategoryId.has(categoryId)) byCategoryId.set(categoryId, []);
+      byCategoryId.get(categoryId).push(a);
+    }
+
+    const namedGroups = categories
+      .filter((c) => byCategoryId.has(c.id))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }))
+      .map((c) => ({ id: c.id, name: c.name, articles: byCategoryId.get(c.id) }));
+
+    const uncategorizedArticles = byCategoryId.get(null);
+    const groups = uncategorizedArticles
+      ? [...namedGroups, { id: null, name: "Uncategorized", articles: uncategorizedArticles }]
+      : namedGroups;
+
+    return groups.map((g) => ({ ...g, articles: sortByField(g.articles, sort, byIsoDate).slice(0, 10) }));
+  }, [view, articles, feedsById, categories, sort]);
 
   function handleSelectCategory(categoryId) {
     setSelectedCategoryId(categoryId);
     setSelectedFeedId(null);
-    setView((v) => (v === "readArticles" ? "all" : v));
+    setView("all");
   }
 
   function handleSelectFeed(feedId) {
     setSelectedFeedId(feedId);
     setSelectedCategoryId(null);
-    setView((v) => (v === "readArticles" ? "all" : v));
+    setView("all");
+  }
+
+  function handleSelectToday() {
+    setView("today");
+    setSelectedCategoryId(null);
+    setSelectedFeedId(null);
+  }
+
+  function handleSelectReadLater() {
+    setView("readLater");
+    setSelectedCategoryId(null);
+    setSelectedFeedId(null);
   }
 
   function handleSelectReadArticles() {
@@ -229,6 +270,8 @@ export default function App() {
         view={view}
         onSelectCategory={handleSelectCategory}
         onSelectFeed={handleSelectFeed}
+        onSelectToday={handleSelectToday}
+        onSelectReadLater={handleSelectReadLater}
         onSelectReadArticles={handleSelectReadArticles}
         onAddFeed={handleAddFeed}
         onAddCategory={handleAddCategory}
@@ -239,21 +282,24 @@ export default function App() {
         onDeleteCategory={handleDeleteCategory}
       />
       <main className="main">
-        <TopBar
-          view={view}
-          onSetView={setView}
-          sort={sort}
-          onSetSort={setSort}
-          onRefresh={handleRefresh}
-          refreshing={refreshing}
-        />
+        <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} />
         {error && <div className="error-banner">{error}</div>}
-        <ArticleList
-          articles={visibleArticles}
-          feedsById={feedsById}
-          onOpen={handleOpen}
-          onToggleSaved={handleToggleSaved}
-        />
+        {view === "today" ? (
+          <TodayDigest
+            groups={todayGroups}
+            feedsById={feedsById}
+            onOpen={handleOpen}
+            onToggleSaved={handleToggleSaved}
+            onSelectCategory={handleSelectCategory}
+          />
+        ) : (
+          <ArticleList
+            articles={visibleArticles}
+            feedsById={feedsById}
+            onOpen={handleOpen}
+            onToggleSaved={handleToggleSaved}
+          />
+        )}
       </main>
     </div>
   );

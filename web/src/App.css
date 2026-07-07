@@ -288,7 +288,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--border);
@@ -296,26 +296,6 @@
   top: 0;
   background: var(--bg);
   z-index: 1;
-}
-
-.view-tabs {
-  display: flex;
-  gap: 4px;
-}
-
-.view-tab {
-  padding: 6px 12px;
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.view-tab.active {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent);
 }
 
 .topbar-actions {
@@ -430,6 +410,39 @@
 
 .save-btn.saved {
   color: #d99a1b;
+}
+
+/* --- Today digest --- */
+
+.today-groups {
+  display: flex;
+  flex-direction: column;
+}
+
+.today-group-header {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 12px 12px 0;
+  border: none;
+  background: none;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.today-group-header:hover {
+  text-decoration: underline;
+}
+
+.today-group-header-static {
+  cursor: default;
+  color: var(--text-muted);
+}
+
+.today-group-header-static:hover {
+  text-decoration: none;
 }
 
 /* --- Wider screens: sidebar becomes a fixed left column --- */
