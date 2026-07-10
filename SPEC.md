@@ -10,6 +10,7 @@ A self-hosted, minimal alternative to Feedly. Local-first in the sense of no use
 - `contentSnippet` (used as the "one sentence more than the headline") comes straight from the feed's own description/summary field, truncated to 280 chars — no AI summarization involved.
 - Persistence routes under `/api/categories`, `/api/feeds`, `/api/articles`, and `/api/refresh` — see **API** below.
 - `fetchAndParseFeed()` fetches the feed XML itself via Node's built-in `fetch()` (with a browser-like `User-Agent`) and hands the text to `rss-parser`'s `parseString()`, rather than letting `rss-parser` fetch the URL itself (it uses Node's older `http`/`https` module internally). Some sites (e.g. Cricinfo) block that older client outright regardless of headers sent — confirmed to be connection/TLS fingerprinting, not a `User-Agent` check, since Node's `fetch()` gets through with no special headers at all. Sites running an active bot-challenge system (e.g. ESPN's main site, which returns an empty `202` with `x-amzn-waf-action: challenge`) are a separate, harder wall this doesn't solve — that needs a real JS-executing browser to pass, which is out of scope here.
+- Optionally serves the built frontend too (`express.static` on `web/dist`, only mounted when that directory exists) — see Running It below for the single-process vs. two-process dev workflows this supports.
 
 **`web/`** — Vite + React SPA.
 - Dev server proxies `/api/*` to `http://localhost:3001` (see `vite.config.js`), so the frontend never needs to know the backend's port directly.
@@ -158,6 +159,7 @@ There are no view tabs in the top bar — Today, Read Later, and Read Articles a
 - **Sidebar categories (and Uncategorized) now collapse by default** instead of starting all-expanded — the tracked state inverted from "which sections are collapsed" (default: none) to "which sections have been explicitly expanded" (default: none), so anything untouched, including categories that load in after mount or get added later, starts collapsed.
 - **Feed logos** were added to the sidebar before each feed's name, reusing the same placeholder-icon fallback (extracted into `web/src/placeholderIcon.js`) already used for article thumbnails.
 - **Today redesigned from a flat filtered list into a per-category digest**, and the top-bar view tabs (Today/All/Read Later) were removed in favor of sidebar nav items alongside Read Articles. This was prompted by a request to rank each category's top 10 by "hits" — since that data doesn't exist for RSS feeds, ranking is by recency instead (confirmed with the user). Read Later became a global view (like Read Articles) rather than a filter combinable with a category/feed selection, matching its new position in the sidebar.
+- **Single-process running mode added**: a root `package.json`'s `npm start` builds `web/` and has the Express server serve the result directly, so the app can run as one process on one port instead of two dev servers — prompted by wanting to stop running two separate services day-to-day. The two-process dev workflow (Vite's hot-reloading dev server + the backend) is unchanged and still the way to actively develop the frontend.
 
 ## Known gaps / not implemented
 
@@ -172,12 +174,15 @@ There are no view tabs in the top bar — Today, Read Later, and Read Articles a
 - **In-app "reader view" (full article content)** — considered and explicitly rejected; snippet + open-in-new-tab is the intended experience.
 - **Article-webpage scraping for images** (e.g. Open Graph tags) — explicitly out of scope; too heavy/fragile for a per-refresh operation. See Images above.
 - No automated tests.
-- No production build/deploy configuration — dev-only (`npm run dev` / `npm start`).
+- No real deployment tooling (no Dockerfile, process manager config, HTTPS/reverse-proxy setup) — `npm start` from the repo root builds the frontend and runs it as a single local process, but that's still "run it on your own machine," not a hardened production deploy.
 
 ## Running it
 
+**Single-process mode** (root `package.json`): `npm start` from the repo root runs `vite build` in `web/` (producing `web/dist`) then starts the server, which serves `web/dist` via `express.static` alongside the API — one process, one port (`http://localhost:3001`), no Vite dev server involved. The static-serving block in `server/src/index.js` only activates if `web/dist` exists (checked with `fs.existsSync`), so it's silently a no-op — just an informational console log — when it doesn't, which is what keeps this from interfering with the two-process dev workflow below.
+
+**Two-process dev mode** (hot-reloading frontend):
 ```bash
 cd server && npm start     # http://localhost:3001 — creates server/data/feed-reader.db on first run
 cd web && npm run dev      # http://localhost:5173
 ```
-Open `http://localhost:5173` in Firefox. Both must be running simultaneously; the web dev server proxies API calls to the backend. The backend has no hot-reload — restart it manually after any change under `server/src/`.
+Open `http://localhost:5173` in Firefox. Both must be running simultaneously; the web dev server proxies API calls to the backend. The backend has no hot-reload either way — restart it manually after any change under `server/src/`.

@@ -1,10 +1,16 @@
 import express from "express";
 import cors from "cors";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { fetchAndParseFeed } from "./feedParser.js";
 import categoriesRouter from "./routes/categories.js";
 import feedsRouter from "./routes/feeds.js";
 import articlesRouter from "./routes/articles.js";
 import refreshRouter from "./routes/refresh.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const WEB_DIST = path.join(__dirname, "..", "..", "web", "dist");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -41,6 +47,18 @@ app.use("/api/categories", categoriesRouter);
 app.use("/api/feeds", feedsRouter);
 app.use("/api/articles", articlesRouter);
 app.use("/api/refresh", refreshRouter);
+
+// Serves the built frontend (web/dist, from `npm run build` in web/) so the whole app
+// can run as a single process/port instead of a separate Vite dev server — only kicks
+// in when a build actually exists, so the normal two-process dev workflow (`npm run
+// dev` in web/) is unaffected.
+if (fs.existsSync(WEB_DIST)) {
+  app.use(express.static(WEB_DIST));
+} else {
+  console.log(
+    `No built frontend found at ${WEB_DIST} — run "npm run build" in web/ to serve it from here, or run "npm run dev" in web/ separately for local development.`
+  );
+}
 
 app.listen(PORT, () => {
   console.log(`Feed proxy server listening on http://localhost:${PORT}`);

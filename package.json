@@ -1,0 +1,8 @@
+{
+  "name": "feed-reader",
+  "private": true,
+  "scripts": {
+    "build": "npm run build --prefix web",
+    "start": "npm run build --prefix web && npm start --prefix server"
+  }
+}
