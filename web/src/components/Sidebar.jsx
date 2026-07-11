@@ -138,6 +138,7 @@ export default function Sidebar({
         <div className="feed-row">
           <button
             className={`feed-item ${selectedFeedId === f.id ? "active" : ""}`}
+            aria-current={selectedFeedId === f.id ? "true" : undefined}
             title={f.url}
             draggable
             onDragStart={(e) => {
@@ -245,17 +246,23 @@ export default function Sidebar({
 
   return (
     <nav className="sidebar">
-      <button
-        className={`sidebar-item all-item ${
-          view === "all" && selectedCategoryId === null && selectedFeedId === null ? "active" : ""
-        }`}
-        onClick={() => onSelectCategory(null)}
-      >
-        All Feeds
-      </button>
+      {(() => {
+        const allActive =
+          view === "all" && selectedCategoryId === null && selectedFeedId === null;
+        return (
+          <button
+            className={`sidebar-item all-item ${allActive ? "active" : ""}`}
+            aria-current={allActive ? "true" : undefined}
+            onClick={() => onSelectCategory(null)}
+          >
+            All Feeds
+          </button>
+        );
+      })()}
 
       <button
         className={`sidebar-item ${view === "today" ? "active" : ""}`}
+        aria-current={view === "today" ? "true" : undefined}
         onClick={onSelectToday}
       >
         Today
@@ -263,6 +270,7 @@ export default function Sidebar({
 
       <button
         className={`sidebar-item ${view === "readLater" ? "active" : ""}`}
+        aria-current={view === "readLater" ? "true" : undefined}
         onClick={onSelectReadLater}
       >
         Read Later
@@ -270,6 +278,7 @@ export default function Sidebar({
 
       <button
         className={`sidebar-item ${view === "readArticles" ? "active" : ""}`}
+        aria-current={view === "readArticles" ? "true" : undefined}
         onClick={onSelectReadArticles}
       >
         Read Articles
@@ -282,6 +291,8 @@ export default function Sidebar({
             <button
               className="collapse-btn"
               title={uncategorizedCollapsed ? "Expand" : "Collapse"}
+              aria-label={uncategorizedCollapsed ? "Expand Uncategorized" : "Collapse Uncategorized"}
+              aria-expanded={!uncategorizedCollapsed}
               onClick={() => toggleCollapsed("uncategorized")}
             >
               {uncategorizedCollapsed ? "▸" : "▾"}
@@ -339,6 +350,7 @@ export default function Sidebar({
                 <div className="category-header">
                   <button
                     className={`sidebar-item ${selectedCategoryId === cat.id ? "active" : ""}`}
+                    aria-current={selectedCategoryId === cat.id ? "true" : undefined}
                     onClick={() => onSelectCategory(cat.id)}
                   >
                     {cat.name}
@@ -346,6 +358,8 @@ export default function Sidebar({
                   <button
                     className="collapse-btn"
                     title={collapsed ? "Expand" : "Collapse"}
+                    aria-label={collapsed ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
+                    aria-expanded={!collapsed}
                     onClick={() => toggleCollapsed(key)}
                   >
                     {collapsed ? "▸" : "▾"}

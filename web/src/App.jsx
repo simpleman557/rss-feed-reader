@@ -56,10 +56,16 @@ export default function App() {
   const [error, setError] = useState(null);
 
   const reloadAll = useCallback(async () => {
-    const [cats, fds, arts] = await Promise.all([getCategories(), getFeeds(), getArticles()]);
-    setCategories(cats);
-    setFeeds(fds);
-    setArticles(arts);
+    try {
+      const [cats, fds, arts] = await Promise.all([getCategories(), getFeeds(), getArticles()]);
+      setCategories(cats);
+      setFeeds(fds);
+      setArticles(arts);
+    } catch {
+      // The whole app depends on the server; if it's unreachable, say so plainly
+      // instead of silently rendering an empty shell.
+      setError("Couldn't reach the server. Make sure it's running, then hit Refresh.");
+    }
   }, []);
 
   useEffect(() => {

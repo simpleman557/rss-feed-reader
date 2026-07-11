@@ -10,7 +10,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 12px;
+  padding: 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-subtle);
 }
@@ -19,19 +19,20 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 6px 8px;
+  padding: 7px 10px;
   border: none;
   background: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.95rem;
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .sidebar-item.active {
-  background: var(--accent);
-  color: #fff;
+  background: var(--selected-bg);
+  color: var(--accent);
 }
 
 .all-item {
@@ -49,52 +50,74 @@
   min-width: 0;
 }
 
-.collapse-btn {
+.collapse-btn,
+.edit-category-btn,
+.add-feed-btn,
+.edit-feed-btn {
   flex-shrink: 0;
   border: none;
   background: none;
   cursor: pointer;
-  padding: 4px 6px;
-  font-size: 0.75rem;
   color: var(--text-muted);
   border-radius: 6px;
-  opacity: 0;
-  transition: opacity 0.1s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.category-header:hover .collapse-btn,
-.collapse-btn:focus-visible {
-  opacity: 1;
-}
-
-.collapse-btn:hover {
-  background: var(--border);
+.collapse-btn {
+  padding: 4px 6px;
+  font-size: 0.75rem;
 }
 
 .edit-category-btn,
 .add-feed-btn {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
   padding: 4px 6px;
   font-size: 0.85rem;
-  color: var(--text-muted);
-  border-radius: 6px;
-  opacity: 0;
-  transition: opacity 0.1s ease;
 }
 
-.category-header:hover .edit-category-btn,
-.category-header:hover .add-feed-btn,
-.edit-category-btn:focus-visible,
-.add-feed-btn:focus-visible {
-  opacity: 1;
+.edit-feed-btn {
+  padding: 3px 5px;
+  font-size: 0.78rem;
 }
 
+.collapse-btn:hover,
 .edit-category-btn:hover,
-.add-feed-btn:hover {
+.add-feed-btn:hover,
+.edit-feed-btn:hover {
   background: var(--border);
+}
+
+/* On devices with a real pointer, these secondary controls stay out of the way until
+   the row is hovered/focused. On touch devices (no hover) they're always visible —
+   otherwise they'd be permanently unreachable. */
+@media (hover: hover) {
+  .collapse-btn,
+  .edit-category-btn,
+  .add-feed-btn,
+  .edit-feed-btn {
+    opacity: 0;
+  }
+
+  .category-header:hover .collapse-btn,
+  .collapse-btn:focus-visible,
+  .category-header:hover .edit-category-btn,
+  .category-header:hover .add-feed-btn,
+  .edit-category-btn:focus-visible,
+  .add-feed-btn:focus-visible,
+  .feed-row:hover .edit-feed-btn,
+  .edit-feed-btn:focus-visible {
+    opacity: 1;
+  }
+}
+
+/* Comfortable tap targets on touch devices (Apple HIG ~44pt). */
+@media (hover: none) {
+  .collapse-btn,
+  .edit-category-btn,
+  .add-feed-btn,
+  .edit-feed-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
 }
 
 .sidebar-divider {
@@ -114,10 +137,12 @@
 .edit-category-form input,
 .edit-feed-form input,
 .add-feed-inline-form input {
-  padding: 4px 6px;
+  padding: 6px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.9rem;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .feed-url-display {
@@ -136,23 +161,24 @@
 .edit-category-form button,
 .edit-feed-form button,
 .add-feed-inline-form button {
-  padding: 4px 8px;
+  padding: 5px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
   cursor: pointer;
   font-size: 0.8rem;
 }
 
 .delete-btn {
-  color: #b3261e;
-  border-color: #f5c6c1 !important;
+  color: var(--danger);
+  border-color: var(--danger-border) !important;
 }
 
 .uncategorized-label {
   font-weight: 600;
   color: var(--text-muted);
-  padding: 6px 8px;
+  padding: 7px 10px;
 }
 
 .category-list {
@@ -181,22 +207,23 @@
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   text-align: left;
   border: none;
   background: none;
-  border-radius: 6px;
-  padding: 3px 6px;
+  border-radius: 8px;
+  padding: 5px 8px;
   font-size: 0.85rem;
   color: var(--text-muted);
   cursor: grab;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 .feed-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: 4px;
   object-fit: cover;
   background: var(--bg);
 }
@@ -213,39 +240,17 @@
 }
 
 .feed-item.active {
-  background: var(--accent);
-  color: #fff;
-}
-
-.edit-feed-btn {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 3px 5px;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  border-radius: 6px;
-  opacity: 0;
-  transition: opacity 0.1s ease;
-}
-
-.feed-row:hover .edit-feed-btn,
-.edit-feed-btn:focus-visible {
-  opacity: 1;
-}
-
-.edit-feed-btn:hover {
-  background: var(--border);
+  background: var(--selected-bg);
+  color: var(--accent);
 }
 
 .drop-zone {
-  border-radius: 6px;
-  transition: background-color 0.1s ease;
+  border-radius: 8px;
+  transition: background-color 0.15s ease;
 }
 
 .drop-zone.drag-over {
-  background: var(--accent-bg, rgba(37, 99, 235, 0.12));
+  background: var(--selected-bg);
   outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
@@ -259,20 +264,29 @@
 }
 
 .add-category-form input {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 0.9rem;
+  background: var(--surface);
+  color: var(--text);
 }
 
 .add-category-form button,
 .new-category-btn {
-  padding: 6px 8px;
+  padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background-color 0.15s ease;
+}
+
+.add-category-form button:hover,
+.new-category-btn:hover {
+  background: var(--bg-subtle);
 }
 
 /* --- Main / TopBar --- */
@@ -290,12 +304,15 @@
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
-  background: var(--bg);
   z-index: 1;
+  /* Translucent "material": content softly shows through as it scrolls under. */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
 }
 
 .topbar-actions {
@@ -306,21 +323,32 @@
 
 .topbar-actions select,
 .topbar-actions button {
-  padding: 6px 10px;
+  padding: 7px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: #fff;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
   font-size: 0.9rem;
   cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.topbar-actions button:hover:not(:disabled) {
+  background: var(--bg-subtle);
+}
+
+.topbar-actions button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .error-banner {
-  margin: 10px 12px 0;
+  margin: 10px 14px 0;
   padding: 8px 12px;
-  background: #fdecea;
-  color: #93261a;
-  border: 1px solid #f5c6c1;
-  border-radius: 6px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
   font-size: 0.9rem;
 }
 
@@ -329,10 +357,10 @@
 .article-list {
   list-style: none;
   margin: 0;
-  padding: 8px 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .empty-state {
@@ -343,12 +371,13 @@
 
 .article-item {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   align-items: flex-start;
-  padding: 10px 12px;
+  padding: 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  background: #fff;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
 }
 
 .article-item.read .article-title {
@@ -364,7 +393,7 @@
   width: 72px;
   height: 72px;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 8px;
   object-fit: cover;
   background: var(--bg-subtle);
 }
@@ -378,7 +407,8 @@
   display: block;
   text-decoration: none;
   color: var(--text);
-  font-size: 1rem;
+  font-size: 1.05rem;
+  line-height: 1.35;
   word-break: break-word;
 }
 
@@ -388,7 +418,7 @@
   flex-wrap: wrap;
   font-size: 0.78rem;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .article-snippet {
@@ -406,10 +436,22 @@
   color: var(--text-muted);
   padding: 2px 4px;
   flex-shrink: 0;
+  transition: color 0.15s ease, transform 0.1s ease;
+}
+
+.save-btn:active {
+  transform: scale(0.85);
 }
 
 .save-btn.saved {
-  color: #d99a1b;
+  color: #f5a623;
+}
+
+@media (hover: none) {
+  .save-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* --- Today digest --- */
@@ -423,10 +465,10 @@
   display: block;
   width: 100%;
   text-align: left;
-  padding: 12px 12px 0;
+  padding: 14px 14px 2px;
   border: none;
   background: none;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--text);
   cursor: pointer;

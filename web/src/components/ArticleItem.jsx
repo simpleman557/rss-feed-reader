@@ -35,6 +35,8 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
       <button
         className={`save-btn ${article.saved ? "saved" : ""}`}
         onClick={() => onToggleSaved(article.id)}
+        aria-label={article.saved ? "Remove from Read Later" : "Save for later"}
+        aria-pressed={article.saved}
         title={article.saved ? "Remove from Read Later" : "Save for later"}
       >
         {article.saved ? "★" : "☆"}
