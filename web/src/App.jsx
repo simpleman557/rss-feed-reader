@@ -312,6 +312,7 @@ export default function App() {
             feedsById={feedsById}
             onOpen={handleOpen}
             onToggleSaved={handleToggleSaved}
+            getDate={view === "readArticles" ? byReadAt : byIsoDate}
           />
         )}
       </main>

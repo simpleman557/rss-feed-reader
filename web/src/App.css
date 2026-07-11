@@ -396,6 +396,27 @@
   gap: 10px;
 }
 
+/* --- Date-grouped article list --- */
+
+.date-groups {
+  display: flex;
+  flex-direction: column;
+}
+
+.date-group-header {
+  margin: 0;
+  padding: 16px 14px 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.date-group:first-child .date-group-header {
+  padding-top: 12px;
+}
+
 .empty-state {
   padding: 24px 12px;
   color: var(--text-muted);
