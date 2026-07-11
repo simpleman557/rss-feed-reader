@@ -2,9 +2,14 @@ import { useState } from "react";
 import { buildOPML } from "../data/opml";
 import { PLACEHOLDER_ICON } from "../placeholderIcon";
 
+function Count({ n }) {
+  return n > 0 ? <span className="sb-count">{n}</span> : null;
+}
+
 export default function Sidebar({
   categories,
   feeds,
+  counts,
   selectedCategoryId,
   selectedFeedId,
   view,
@@ -258,6 +263,7 @@ export default function Sidebar({
             onClick={() => onSelectCategory(null)}
           >
             All Feeds
+            <Count n={counts.all} />
           </button>
         );
       })()}
@@ -268,6 +274,7 @@ export default function Sidebar({
         onClick={onSelectToday}
       >
         Today
+        <Count n={counts.today} />
       </button>
 
       <button
@@ -276,6 +283,7 @@ export default function Sidebar({
         onClick={onSelectReadLater}
       >
         Read Later
+        <Count n={counts.saved} />
       </button>
 
       <button
@@ -315,6 +323,8 @@ export default function Sidebar({
       )}
 
       <div className="sidebar-divider" />
+
+      {categories.length > 0 && <div className="sb-section-label">Categories</div>}
 
       <ul className="category-list">
         {categories.map((cat) => {

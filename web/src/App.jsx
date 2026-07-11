@@ -80,6 +80,20 @@ export default function App() {
 
   const feedsById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds]);
 
+  // Unread/saved counts shown next to the sidebar destinations.
+  const counts = useMemo(() => {
+    let all = 0;
+    let today = 0;
+    let saved = 0;
+    for (const a of articles) {
+      if (a.saved) saved++;
+      if (a.read) continue;
+      all++;
+      if (isToday(a.isoDate)) today++;
+    }
+    return { all, today, saved };
+  }, [articles]);
+
   const visibleArticles = useMemo(() => {
     if (view === "readArticles") {
       return sortByField(
@@ -277,6 +291,7 @@ export default function App() {
       <Sidebar
         categories={categories}
         feeds={feeds}
+        counts={counts}
         selectedCategoryId={selectedCategoryId}
         selectedFeedId={selectedFeedId}
         view={view}

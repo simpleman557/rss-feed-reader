@@ -6,7 +6,7 @@ export default function TopBar({ sort, onSetSort, onRefresh, refreshing }) {
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
         </select>
-        <button onClick={onRefresh} disabled={refreshing}>
+        <button className="refresh-btn" onClick={onRefresh} disabled={refreshing}>
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>
       </div>

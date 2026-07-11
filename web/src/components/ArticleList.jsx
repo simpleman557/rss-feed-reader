@@ -1,6 +1,6 @@
 import ArticleItem from "./ArticleItem";
 
-function renderRow(article, feedsById, onOpen, onToggleSaved) {
+function renderRow(article, feedsById, onOpen, onToggleSaved, displayDate) {
   return (
     <ArticleItem
       key={article.id}
@@ -9,6 +9,7 @@ function renderRow(article, feedsById, onOpen, onToggleSaved) {
       feedImageUrl={feedsById.get(article.feedId)?.feedImageUrl ?? null}
       onOpen={onOpen}
       onToggleSaved={onToggleSaved}
+      displayDate={displayDate}
     />
   );
 }
@@ -53,7 +54,9 @@ export default function ArticleList({ articles, feedsById, onOpen, onToggleSaved
 
   if (!getDate) {
     return (
-      <ul className="article-list">{articles.map((a) => renderRow(a, feedsById, onOpen, onToggleSaved))}</ul>
+      <ul className="article-list">
+        {articles.map((a) => renderRow(a, feedsById, onOpen, onToggleSaved, a.isoDate))}
+      </ul>
     );
   }
 
@@ -63,7 +66,7 @@ export default function ArticleList({ articles, feedsById, onOpen, onToggleSaved
         <section key={i} className="date-group">
           <h2 className="date-group-header">{group.label}</h2>
           <ul className="article-list">
-            {group.articles.map((a) => renderRow(a, feedsById, onOpen, onToggleSaved))}
+            {group.articles.map((a) => renderRow(a, feedsById, onOpen, onToggleSaved, getDate(a)))}
           </ul>
         </section>
       ))}
