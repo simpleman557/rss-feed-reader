@@ -62,15 +62,6 @@
   color: var(--accent);
 }
 
-.sb-section-label {
-  padding: 2px 10px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-
 .category-header {
   display: flex;
   align-items: center;
@@ -337,7 +328,7 @@
   padding: 0 2px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted);
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }

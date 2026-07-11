@@ -324,7 +324,7 @@ export default function Sidebar({
 
       <div className="sidebar-divider" />
 
-      {categories.length > 0 && <div className="sb-section-label">Categories</div>}
+      {categories.length > 0 && <div className="sidebar-section-label">Categories</div>}
 
       <ul className="category-list">
         {categories.map((cat) => {
