@@ -8,6 +8,7 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 - Today (a per-category digest of what's new), Read Later, and Read Articles as sidebar destinations, plus a plain unread list for any category or feed you select — all sortable newest- or oldest-first
 - Automatic per-article thumbnail extraction, handling the many incompatible ways publishers embed images across real-world feeds
 - Auto-refreshes every 15 minutes (paused while the tab is hidden, to avoid wasted fetches)
+- Light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
 - Export your subscriptions to OPML
 - All data — subscriptions, categories, read/saved state — lives in a SQLite database file owned by the server, not the browser, so it survives clearing browser data and isn't tied to one browser profile
 
