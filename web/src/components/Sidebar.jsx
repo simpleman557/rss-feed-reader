@@ -20,6 +20,8 @@ export default function Sidebar({
   onRenameFeed,
   onDeleteFeed,
   onDeleteCategory,
+  theme,
+  onSetTheme,
 }) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -413,6 +415,24 @@ export default function Sidebar({
       <button className="new-category-btn" onClick={handleExportOPML}>
         Export OPML
       </button>
+
+      <div className="theme-control" role="group" aria-label="Appearance">
+        {[
+          ["system", "System"],
+          ["light", "Light"],
+          ["dark", "Dark"],
+        ].map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`theme-option ${theme === value ? "active" : ""}`}
+            aria-pressed={theme === value}
+            onClick={() => onSetTheme(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </nav>
   );
 }

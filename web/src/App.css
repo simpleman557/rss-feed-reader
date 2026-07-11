@@ -289,6 +289,39 @@
   background: var(--bg-subtle);
 }
 
+/* Appearance segmented control (System / Light / Dark). */
+.theme-control {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.theme-option {
+  flex: 1;
+  padding: 5px 4px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.theme-option.active {
+  background: var(--selected-bg);
+  color: var(--accent);
+}
+
+@media (hover: none) {
+  .theme-option {
+    min-height: 40px;
+  }
+}
+
 /* --- Main / TopBar --- */
 
 .main {

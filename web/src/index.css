@@ -1,42 +1,35 @@
 :root {
+  /* "system" appearance: light-dark() below follows the OS. A forced Light/Dark choice
+     sets data-theme (see the rules underneath), which overrides color-scheme and thus
+     flips every light-dark() token at once — no duplicated token blocks needed. */
   color-scheme: light dark;
 
   --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Light appearance */
-  --text: #1d1d1f;
-  --text-muted: #5c5c61;
-  --bg: #ffffff;
-  --bg-subtle: #f5f5f7;
-  --surface: #ffffff;
-  --border: #d2d2d7;
-  --accent: #007aff;
-  --selected-bg: rgba(0, 122, 255, 0.12);
-  --danger: #d70015;
-  --danger-bg: #fdecea;
-  --danger-border: #f5c6c1;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --text: light-dark(#1d1d1f, #f5f5f7);
+  --text-muted: light-dark(#5c5c61, #98989f);
+  --bg: light-dark(#ffffff, #1c1c1e);
+  --bg-subtle: light-dark(#f5f5f7, #2c2c2e);
+  --surface: light-dark(#ffffff, #2c2c2e);
+  --border: light-dark(#d2d2d7, #38383a);
+  --accent: light-dark(#007aff, #0a84ff);
+  --selected-bg: light-dark(rgba(0, 122, 255, 0.12), rgba(10, 132, 255, 0.26));
+  --danger: light-dark(#d70015, #ff6961);
+  --danger-bg: light-dark(#fdecea, #3a1f1e);
+  --danger-border: light-dark(#f5c6c1, #5c2b2b);
+  --shadow: light-dark(0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.4));
 
   font: 16px/1.5 var(--sans);
   color: var(--text);
   background: var(--bg);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #f5f5f7;
-    --text-muted: #98989f;
-    --bg: #1c1c1e;
-    --bg-subtle: #2c2c2e;
-    --surface: #2c2c2e;
-    --border: #38383a;
-    --accent: #0a84ff;
-    --selected-bg: rgba(10, 132, 255, 0.26);
-    --danger: #ff6961;
-    --danger-bg: #3a1f1e;
-    --danger-border: #5c2b2b;
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
-  }
+/* Explicit appearance overrides (set by the theme control / no-flash inline script). */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 * {

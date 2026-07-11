@@ -18,6 +18,7 @@ import {
   toggleSaved,
 } from "./data/db";
 import { refreshAllFeeds, refreshFeed } from "./data/feeds";
+import { getStoredTheme, applyTheme } from "./theme";
 import "./App.css";
 
 function isToday(isoDate) {
@@ -54,6 +55,11 @@ export default function App() {
   const [selectedFeedId, setSelectedFeedId] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [theme, setTheme] = useState(getStoredTheme);
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   const reloadAll = useCallback(async () => {
     try {
@@ -286,6 +292,8 @@ export default function App() {
         onRenameFeed={handleRenameFeed}
         onDeleteFeed={handleDeleteFeed}
         onDeleteCategory={handleDeleteCategory}
+        theme={theme}
+        onSetTheme={setTheme}
       />
       <main className="main">
         <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} />
