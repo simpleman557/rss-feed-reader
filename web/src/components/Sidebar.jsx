@@ -412,26 +412,32 @@ export default function Sidebar({
         </button>
       )}
 
-      <button className="new-category-btn" onClick={handleExportOPML}>
-        Export OPML
-      </button>
-
-      <div className="theme-control" role="group" aria-label="Appearance">
-        {[
-          ["system", "System"],
-          ["light", "Light"],
-          ["dark", "Dark"],
-        ].map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            className={`theme-option ${theme === value ? "active" : ""}`}
-            aria-pressed={theme === value}
-            onClick={() => onSetTheme(value)}
-          >
-            {label}
+      <div className="sidebar-section">
+        <div className="sidebar-section-label">Customization</div>
+        <div className="sidebar-section-card">
+          <button className="sidebar-card-row" onClick={handleExportOPML}>
+            Export OPML
           </button>
-        ))}
+          <div className="sidebar-card-row sidebar-card-row-theme">
+            <div className="theme-control" role="group" aria-label="Appearance">
+              {[
+                ["system", "System"],
+                ["light", "Light"],
+                ["dark", "Dark"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`theme-option ${theme === value ? "active" : ""}`}
+                  aria-pressed={theme === value}
+                  onClick={() => onSetTheme(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     </nav>
   );

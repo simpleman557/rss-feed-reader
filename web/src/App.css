@@ -289,13 +289,72 @@
   background: var(--bg-subtle);
 }
 
-/* Appearance segmented control (System / Light / Dark). */
+/* --- Sidebar bottom "Customization" section: a labeled, rounded card grouping
+   Export OPML and the appearance control together, distinct from "+ Add Category"
+   which stays a standalone button above it. --- */
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-section-label {
+  padding: 0 2px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.sidebar-section-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.sidebar-card-row {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-card-row:hover {
+  background: var(--bg-subtle);
+}
+
+.sidebar-card-row + .sidebar-card-row {
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-card-row-theme {
+  cursor: default;
+  padding: 6px;
+}
+
+.sidebar-card-row-theme:hover {
+  background: none;
+}
+
+/* Appearance segmented control (System / Light / Dark). Sits inside a card row above,
+   so it has no border/background of its own — the card already provides that. */
 .theme-control {
   display: flex;
   gap: 2px;
-  padding: 3px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  width: 100%;
 }
 
 .theme-option {
