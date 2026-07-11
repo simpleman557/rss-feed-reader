@@ -60,6 +60,20 @@ if (fs.existsSync(WEB_DIST)) {
   );
 }
 
+// Central error handler. Expected business-rule violations (ValidationError, or
+// anything carrying an explicit .status) are reported with that status and their own
+// message. Anything else is an unexpected fault: logged in full server-side, but the
+// client only gets a generic 500 — internal error details are never leaked over HTTP.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const status = err.status || 500;
+  if (status >= 500) {
+    console.error(err);
+    return res.status(status).json({ error: "Internal server error" });
+  }
+  res.status(status).json({ error: err.message });
+});
+
 app.listen(PORT, () => {
   console.log(`Feed proxy server listening on http://localhost:${PORT}`);
 });

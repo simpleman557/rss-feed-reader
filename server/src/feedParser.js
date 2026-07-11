@@ -67,10 +67,26 @@ function itemImageUrl(item) {
 const FEED_FETCH_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 
+// Cap on how long we'll wait for a single feed's server. Without this, one hung/slow
+// feed makes a refresh spin forever — and since /api/refresh awaits all feeds together,
+// one dead feed would otherwise stall the entire batch's response indefinitely.
+const FEED_FETCH_TIMEOUT_MS = 15000;
+
 // Fetches and normalizes an RSS/Atom feed. Shared by the public /api/feed route and
 // the server-side refresh flow, so both use identical parsing/image-extraction logic.
 export async function fetchAndParseFeed(url) {
-  const res = await fetch(url, { headers: { "User-Agent": FEED_FETCH_USER_AGENT } });
+  let res;
+  try {
+    res = await fetch(url, {
+      headers: { "User-Agent": FEED_FETCH_USER_AGENT },
+      signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (err.name === "TimeoutError") {
+      throw new Error(`Timed out after ${FEED_FETCH_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  }
   if (!res.ok) {
     throw new Error(`Status code ${res.status}`);
   }

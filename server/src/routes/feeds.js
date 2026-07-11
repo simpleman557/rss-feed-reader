@@ -13,12 +13,8 @@ router.post("/", (req, res) => {
   if (!url || typeof url !== "string") {
     return res.status(400).json({ error: "url is required" });
   }
-  try {
-    const id = addFeed(url, categoryId ?? null, title);
-    res.status(201).json({ id });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const id = addFeed(url, categoryId ?? null, title);
+  res.status(201).json({ id });
 });
 
 router.patch("/:id", (req, res) => {
@@ -26,12 +22,8 @@ router.patch("/:id", (req, res) => {
   if (!title || typeof title !== "string") {
     return res.status(400).json({ error: "title is required" });
   }
-  try {
-    renameFeed(Number(req.params.id), title);
-    res.status(204).end();
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  renameFeed(Number(req.params.id), title);
+  res.status(204).end();
 });
 
 router.patch("/:id/category", (req, res) => {

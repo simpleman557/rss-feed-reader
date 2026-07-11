@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { ValidationError } from "./errors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -11,6 +12,9 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const db = new Database(DB_PATH);
 db.pragma("foreign_keys = ON");
+// WAL mode: better concurrent read/write behavior and fewer fsync stalls than the
+// default rollback journal. Produces -wal/-shm sidecar files (already gitignored).
+db.pragma("journal_mode = WAL");
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS categories (
@@ -81,12 +85,12 @@ export function addCategory(name) {
   const trimmed = name.trim();
   const normalized = normalizeName(trimmed);
   if (normalized === RESERVED_CATEGORY_NAME) {
-    throw new Error(`"Uncategorized" is reserved and can't be used as a category name.`);
+    throw new ValidationError(`"Uncategorized" is reserved and can't be used as a category name.`);
   }
 
   const existing = getCategories();
   if (existing.some((c) => normalizeName(c.name) === normalized)) {
-    throw new Error(`A category named "${trimmed}" already exists.`);
+    throw new ValidationError(`A category named "${trimmed}" already exists.`);
   }
 
   // Insert alphabetically relative to the current (possibly manually reordered) sequence.
@@ -103,12 +107,12 @@ export function updateCategoryName(categoryId, name) {
   const trimmed = name.trim();
   const normalized = normalizeName(trimmed);
   if (normalized === RESERVED_CATEGORY_NAME) {
-    throw new Error(`"Uncategorized" is reserved and can't be used as a category name.`);
+    throw new ValidationError(`"Uncategorized" is reserved and can't be used as a category name.`);
   }
 
   const categories = getCategories();
   if (categories.some((c) => c.id !== categoryId && normalizeName(c.name) === normalized)) {
-    throw new Error(`A category named "${trimmed}" already exists.`);
+    throw new ValidationError(`A category named "${trimmed}" already exists.`);
   }
 
   const category = db.prepare("SELECT * FROM categories WHERE id = ?").get(categoryId);
@@ -169,7 +173,7 @@ export function addFeed(url, categoryId, title) {
 
   const normalizedUrl = normalizeFeedUrl(url);
   if (normalizedUrl && allFeeds.some((f) => normalizeFeedUrl(f.url) === normalizedUrl)) {
-    throw new Error("This feed URL has already been added.");
+    throw new ValidationError("This feed URL has already been added.");
   }
 
   const bucketCount = bucketOf(allFeeds, normalizedCategoryId).length;
@@ -240,7 +244,7 @@ export function renameFeed(feedId, title) {
   const categoryId = feed.categoryId ?? null;
   const bucket = bucketOf(db.prepare("SELECT * FROM feeds").all(), categoryId);
   if (bucket.some((f) => f.id !== feedId && normalizeName(f.title) === normalized)) {
-    throw new Error(`A feed named "${trimmed}" already exists in this category.`);
+    throw new ValidationError(`A feed named "${trimmed}" already exists in this category.`);
   }
   updateFeedTitle(feedId, trimmed);
 }
@@ -276,20 +280,21 @@ function rowToArticle(row) {
   return { ...row, read: !!row.read, saved: !!row.saved };
 }
 
+// INSERT OR IGNORE: a row whose id (feedId::guid) already exists is left untouched, so
+// existing read/saved state and imageUrl are preserved permanently across refreshes —
+// only genuinely new guids get inserted. Does the "skip if present" in a single
+// statement, with no separate existence check.
 const insertArticleStmt = db.prepare(`
-  INSERT INTO articles (id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, read, readAt, saved, unsavedAt)
+  INSERT OR IGNORE INTO articles (id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, read, readAt, saved, unsavedAt)
   VALUES (@id, @feedId, @title, @link, @isoDate, @insertedAt, @contentSnippet, @imageUrl, 0, NULL, 0, NULL)
 `);
-const getArticleByIdStmt = db.prepare("SELECT id FROM articles WHERE id = ?");
 
 export function upsertArticles(feedId, items) {
   const now = new Date().toISOString();
   const tx = db.transaction((items) => {
     for (const item of items) {
-      const id = articleId(feedId, item.guid || item.link);
-      if (getArticleByIdStmt.get(id)) continue; // preserve read/saved state, don't overwrite
       insertArticleStmt.run({
-        id,
+        id: articleId(feedId, item.guid || item.link),
         feedId,
         title: item.title,
         link: item.link ?? null,

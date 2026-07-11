@@ -12,12 +12,8 @@ router.post("/", (req, res) => {
   if (!name || typeof name !== "string") {
     return res.status(400).json({ error: "name is required" });
   }
-  try {
-    const id = addCategory(name);
-    res.status(201).json({ id });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  const id = addCategory(name);
+  res.status(201).json({ id });
 });
 
 router.patch("/:id", (req, res) => {
@@ -25,12 +21,8 @@ router.patch("/:id", (req, res) => {
   if (!name || typeof name !== "string") {
     return res.status(400).json({ error: "name is required" });
   }
-  try {
-    updateCategoryName(Number(req.params.id), name);
-    res.status(204).end();
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
+  updateCategoryName(Number(req.params.id), name);
+  res.status(204).end();
 });
 
 router.delete("/:id", (req, res) => {
