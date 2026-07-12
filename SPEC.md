@@ -5,7 +5,7 @@ A self-hosted, minimal alternative to Feedly. Local-first in the sense of no use
 ## Architecture
 
 **`server/`** — Node/Express. No file-watching — restarting it (`Ctrl+C` then `npm start`) is required to pick up any backend code change; unlike the Vite frontend, there's no hot-reload here.
-- Owns all persistent data — categories, feeds, articles, read/saved state — in a single SQLite file at `server/data/feed-reader.db` (via `better-sqlite3`). `server/src/db.js` opens the connection, creates the schema (`CREATE TABLE IF NOT EXISTS`, idempotent on every start — no migration framework, since this is a fresh build with no prior data to preserve across schema changes), and holds every business rule (ordering, uniqueness, retention purge) that used to live in the browser's `db.js`.
+- Owns all persistent data — categories, feeds, articles, read/saved state — in a single SQLite file, `feed-reader.db` (via `better-sqlite3`), kept in an OS-appropriate user data directory *outside* the project/install directory — see Data Directory below. `server/src/db.js` opens the connection, creates the schema (`CREATE TABLE IF NOT EXISTS`, idempotent on every start — no migration framework, since this is a fresh build with no prior data to preserve across schema changes), and holds every business rule (ordering, uniqueness, retention purge) that used to live in the browser's `db.js`.
 - `GET /api/feed?url=<feedUrl>` — fetches the given RSS/Atom URL server-side (avoids the browser CORS restriction that blocks fetching arbitrary third-party feeds directly from client JS), parses it with `rss-parser`, returns normalized JSON: `{ title, feedImageUrl, link, items: [{ title, link, guid, isoDate, contentSnippet, imageUrl }] }`. Validates `url` is present, a well-formed URL, and `http`/`https` only; 400 on bad input, 502 if the fetch/parse itself fails. The actual parsing/image-extraction logic lives in `server/src/feedParser.js`, shared with the refresh routes below so there's one implementation, not two.
 - `contentSnippet` (used as the "one sentence more than the headline") comes straight from the feed's own description/summary field, truncated to 280 chars — no AI summarization involved.
 - Persistence routes under `/api/categories`, `/api/feeds`, `/api/articles`, and `/api/refresh` — see **API** below.
@@ -60,7 +60,16 @@ Some feeds (e.g. TechCrunch) simply contain no image data in any of these forms 
 
 **Important caveat**: `upsertArticles` never overwrites an existing article record (see Data Model below) — so an article already sitting in the database keeps whatever `imageUrl` it got on first fetch, permanently. Backend image-extraction improvements only benefit *new* articles fetched after the improvement; there's no backfill for already-stored ones.
 
-## Data Model (SQLite, `server/data/feed-reader.db`)
+## Data Directory
+
+`feed-reader.db` lives outside the project/install directory entirely, so updating or reinstalling the code never touches your data — the same reasoning real desktop apps use (e.g. macOS keeps app data in `~/Library/Application Support/`, not inside the `.app` bundle). Computed once in `server/src/dataDir.js`, in priority order:
+
+1. `FEED_READER_DATA_DIR` environment variable, if set — an explicit override for anyone who wants the file somewhere specific (a synced folder, an external drive, etc).
+2. Otherwise, an OS-appropriate default: `~/Library/Application Support/Feed Reader` on macOS, `%APPDATA%/Feed Reader` on Windows, `$XDG_DATA_HOME/feed-reader` (or `~/.local/share/feed-reader`) on Linux.
+
+**One-time migration**: earlier versions stored the database inside the project directory (`server/data/feed-reader.db`). On startup, if nothing exists yet at the new location but the old file does, `dataDir.js` moves it (and its `-wal`/`-shm` SQLite sidecar files, which can hold not-yet-checkpointed writes) to the new location automatically, logging what it did — existing subscriptions and read/saved state survive the upgrade untouched. This is a one-shot check (skipped once a file exists at the new location), not an ongoing sync.
+
+## Data Model (SQLite)
 
 **`categories`** — `{ id, name, order }`
 - `name` must be unique, case-insensitive, trimmed.
@@ -188,6 +197,8 @@ The current visual identity is deliberately dense and focused rather than card-h
 - **Export OPML and the appearance control grouped under a "Customization" card**: on request, moved out from being two standalone sidebar buttons into a single labeled, rounded card (Export OPML as the top row, the theme control as the bottom row), matching the clean rounded-segmented-control look the user liked. "+ Add Category" was deliberately left alone, positioned and styled exactly as before.
 - **Article lists grouped by date** ("Today", then calendar dates like "July 10, 2026"): the browse list, Read Later, and Read Articles now split into contiguous same-day sections instead of one flat list, grouped by whichever timestamp field the view already sorts on. Today's per-category digest opts out (every article there is already "today").
 - **Visual identity modernized to "Console"** (see Visual design): chosen from three prototyped directions shown side-by-side in a design-comparison artifact built from the app's own real content — a softer Apple-materials look and a serif editorial layout were the other two, both passed over for this denser, Linear/Arc-style option. Landed alongside a genuinely new feature, not just restyling: unread/saved counts on the All Feeds/Today/Read Later sidebar destinations, closing a previously-listed gap.
+- **Database moved out of the project directory** (see Data Directory): motivated by wanting the data separable from the code/install for backup purposes. A true "choose a folder" picker was considered and dropped as more machinery than the benefit justified for a single-user local tool (would need its own UI); landed on an OS-appropriate default (`~/Library/Application Support/Feed Reader` on macOS) plus a `FEED_READER_DATA_DIR` env var escape hatch, with a one-time automatic migration of the existing `server/data/feed-reader.db` so nothing already-subscribed was lost. Verified against the real, already-in-use database (row counts for every table compared before/after) before this shipped, not just a fresh test database.
+- **Double-click launcher added** (`Feed Reader.command`, see Running It): the actual ask was "stop needing a terminal window and `npm start` every time," not a distributable installer — a real bundled/standalone executable (Node SEA, `pkg`, Electron, etc.) was considered and set aside, since `better-sqlite3` is a compiled native module that complicates bundling a true standalone binary, and there is no present need to hand this to anyone without Node already set up. A plain shell script that starts the existing single-process server and opens the default browser once it responds gets the same day-to-day result for a fraction of the complexity.
 
 ## Known gaps / not implemented
 
@@ -206,11 +217,13 @@ The current visual identity is deliberately dense and focused rather than card-h
 
 ## Running it
 
-**Single-process mode** (root `package.json`): `npm start` from the repo root runs `vite build` in `web/` (producing `web/dist`) then starts the server, which serves `web/dist` via `express.static` alongside the API — one process, one port (`http://localhost:3001`), no Vite dev server involved. The static-serving block in `server/src/index.js` only activates if `web/dist` exists (checked with `fs.existsSync`), so it's silently a no-op — just an informational console log — when it doesn't, which is what keeps this from interfering with the two-process dev workflow below.
+**Double-click launcher** (`Feed Reader.command`, repo root): the easiest day-to-day option — no terminal typing required. Double-clicking it in Finder opens a Terminal window that starts the app (`npm start` under the hood) and, once it responds, opens `http://localhost:3001` in your default browser automatically. If the app is already running, it just re-opens the browser instead of starting a second instance. Leave that Terminal window open while you use the app — closing it (or Ctrl+C) stops the server. It's a plain shell script (no bundling, no installer, no native dependencies of its own), executable via its own file permission bit, checked into the repo like any other file — see Recent History for why this was chosen over a true bundled/standalone executable.
+
+**Single-process mode** (root `package.json`): `npm start` from the repo root runs `vite build` in `web/` (producing `web/dist`) then starts the server, which serves `web/dist` via `express.static` alongside the API — one process, one port (`http://localhost:3001`), no Vite dev server involved. The static-serving block in `server/src/index.js` only activates if `web/dist` exists (checked with `fs.existsSync`), so it's silently a no-op — just an informational console log — when it doesn't, which is what keeps this from interfering with the two-process dev workflow below. The launcher above is just this command with a one-time-typed, double-clickable wrapper around it.
 
 **Two-process dev mode** (hot-reloading frontend):
 ```bash
-cd server && npm start     # http://localhost:3001 — creates server/data/feed-reader.db on first run
+cd server && npm start     # http://localhost:3001 — see Data Directory above for where feed-reader.db lives
 cd web && npm run dev      # http://localhost:5173
 ```
 Open `http://localhost:5173` in Firefox. Both must be running simultaneously; the web dev server proxies API calls to the backend. The backend has no hot-reload either way — restart it manually after any change under `server/src/`.
