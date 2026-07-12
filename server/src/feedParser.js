@@ -24,6 +24,19 @@ function firstImgSrc(html) {
   return match ? match[1] : null;
 }
 
+// Some feeds (BBC's included) reuse the same guid for a live-updated article but
+// append an incrementing revision fragment each time it's edited (e.g. "...c78y2e#0",
+// then "...c78y2e#8") — the story is the same, the link is identical, only this
+// fragment changes. Since our article identity is keyed on guid, an unstripped
+// fragment makes every edit look like a brand-new article. Stripping it here only
+// affects de-duplication identity, never the `link` field itself (used to actually
+// open the article), since some sites legitimately rely on a real fragment there.
+function stripFragment(value) {
+  if (!value) return value;
+  const i = value.indexOf("#");
+  return i === -1 ? value : value.slice(0, i);
+}
+
 // Publishers embed a per-article image in wildly different ways — there's no single
 // standard. Tried in order, most-explicit-signal first:
 //   1. media:thumbnail — an explicit "this is the thumbnail" tag (e.g. BBC)
@@ -99,7 +112,7 @@ export async function fetchAndParseFeed(url) {
     items: (feed.items || []).map((item) => ({
       title: item.title || "(untitled)",
       link: item.link,
-      guid: item.guid || item.link,
+      guid: stripFragment(item.guid) || stripFragment(item.link),
       isoDate: item.isoDate || item.pubDate || null,
       contentSnippet: (item.contentSnippet || item.summary || "").trim().slice(0, 280),
       imageUrl: itemImageUrl(item),

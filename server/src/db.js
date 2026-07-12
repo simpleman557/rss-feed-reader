@@ -46,6 +46,68 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_articles_isoDate ON articles(isoDate);
 `);
 
+// One-time cleanup: before feedParser.js stripped revision fragments from guids (some
+// feeds, e.g. BBC's, reuse the same guid for a live-updated article but append an
+// incrementing "#0", "#8", etc. each time it's edited), each edit could insert a
+// duplicate row differing only by that fragment. Merges every such group down to one
+// row per de-fragmented id: read/saved are OR'd together so nothing already read or
+// saved is lost, the earliest-inserted row's content (title/link/image/snippet) wins,
+// and the survivor is renamed to the fragment-free id so future refreshes match it via
+// INSERT OR IGNORE instead of recreating the duplicate. Runs once at startup — a group
+// only forms when an id actually contains "#", so once merged there's nothing left to
+// find and subsequent runs are a cheap no-op.
+function dedupeFragmentArticles() {
+  const rows = db.prepare("SELECT * FROM articles").all();
+  const groups = new Map();
+  for (const row of rows) {
+    const hashIndex = row.id.indexOf("#");
+    if (hashIndex === -1) continue;
+    const baseId = row.id.slice(0, hashIndex);
+    if (!groups.has(baseId)) groups.set(baseId, []);
+    groups.get(baseId).push(row);
+  }
+  if (groups.size === 0) return;
+
+  const deleteStmt = db.prepare("DELETE FROM articles WHERE id = ?");
+  const renameStmt = db.prepare(
+    "UPDATE articles SET id = ?, read = ?, readAt = ?, saved = ?, unsavedAt = ? WHERE id = ?"
+  );
+
+  const tx = db.transaction(() => {
+    let mergedGroups = 0;
+    let deletedRows = 0;
+    for (const [baseId, fragmentRows] of groups) {
+      const existingBase = db.prepare("SELECT * FROM articles WHERE id = ?").get(baseId);
+      const all = existingBase ? [existingBase, ...fragmentRows] : fragmentRows;
+
+      all.sort((a, b) => new Date(a.insertedAt) - new Date(b.insertedAt));
+      const survivor = all[0];
+      const readAts = all.map((r) => r.readAt).filter(Boolean).sort();
+      const unsavedAts = all.map((r) => r.unsavedAt).filter(Boolean).sort();
+
+      for (const r of all) {
+        if (r.id !== survivor.id) {
+          deleteStmt.run(r.id);
+          deletedRows++;
+        }
+      }
+      renameStmt.run(
+        baseId,
+        all.some((r) => r.read) ? 1 : 0,
+        readAts[0] ?? null,
+        all.some((r) => r.saved) ? 1 : 0,
+        unsavedAts[0] ?? null,
+        survivor.id
+      );
+      mergedGroups++;
+    }
+    console.log(`Merged ${mergedGroups} duplicate article group(s), removed ${deletedRows} row(s).`);
+  });
+  tx();
+}
+
+dedupeFragmentArticles();
+
 // --- Categories ---
 
 const RESERVED_CATEGORY_NAME = "uncategorized";
