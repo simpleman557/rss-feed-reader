@@ -189,16 +189,30 @@ export function updateCategoryName(categoryId, name) {
   normalizeCategoryOrder();
 }
 
+// Every feed must always belong to a real category — there's no "Uncategorized" bucket
+// for orphaned feeds to fall back into (see Sidebar/Data Model in SPEC.md) — so a
+// category can't be deleted while it still has feeds in it; the user has to move or
+// delete them first. (The feeds.categoryId foreign key is still ON DELETE SET NULL as a
+// defense-in-depth fallback, but this check means that path should never actually fire
+// through normal app use.)
 export function deleteCategory(categoryId) {
-  // The feeds.categoryId foreign key is ON DELETE SET NULL, so this automatically
-  // un-categorizes (rather than deletes) any feeds that belonged to this category.
+  const category = db.prepare("SELECT * FROM categories WHERE id = ?").get(categoryId);
+  if (!category) return;
+  const { n } = db.prepare("SELECT COUNT(*) AS n FROM feeds WHERE categoryId = ?").get(categoryId);
+  if (n > 0) {
+    throw new ValidationError(`"${category.name}" still has feeds in it — move or delete them first.`);
+  }
   db.prepare("DELETE FROM categories WHERE id = ?").run(categoryId);
 }
 
 // --- Feeds ---
 //
-// Feeds are grouped into "buckets" by categoryId (null = Uncategorized). Order values
-// only need to be consistent within a bucket; they're allowed to overlap across buckets.
+// Feeds are grouped into "buckets" by categoryId — every feed has one (see
+// requireCategory below), so in practice every bucket key is a real category id. `null`
+// remains a valid bucket key for bucketOf/normalizeFeedBucketOrder's own sake (they're
+// generic groupers, not feed-specific), it just should never occur for a feed row.
+// Order values only need to be consistent within a bucket; they're allowed to overlap
+// across buckets.
 
 function bucketOf(feeds, categoryId) {
   return feeds
@@ -233,8 +247,20 @@ function normalizeFeedUrl(rawUrl) {
   }
 }
 
+// Every feed must belong to a real, existing category — there's no "Uncategorized"
+// fallback (see deleteCategory above) — so addFeed/updateFeedCategory both require an
+// id that actually resolves to a category rather than silently accepting `null`.
+function requireCategory(categoryId) {
+  if (categoryId == null) {
+    throw new ValidationError("Choose a category for this feed.");
+  }
+  if (!db.prepare("SELECT id FROM categories WHERE id = ?").get(categoryId)) {
+    throw new ValidationError("That category doesn't exist.");
+  }
+}
+
 export function addFeed(url, categoryId, title) {
-  const normalizedCategoryId = categoryId ?? null;
+  requireCategory(categoryId);
   const allFeeds = db.prepare("SELECT * FROM feeds").all();
 
   const normalizedUrl = normalizeFeedUrl(url);
@@ -242,13 +268,13 @@ export function addFeed(url, categoryId, title) {
     throw new ValidationError("This feed URL has already been added.");
   }
 
-  const bucketCount = bucketOf(allFeeds, normalizedCategoryId).length;
+  const bucketCount = bucketOf(allFeeds, categoryId).length;
   // Title is just a URL placeholder until the feed is fetched, so it isn't checked for
   // uniqueness or alphabetically placed yet — syncFeedMetadata repositions it once the
   // real title comes in from the first refresh.
   const { lastInsertRowid } = db
     .prepare('INSERT INTO feeds (url, categoryId, title, feedImageUrl, "order") VALUES (?, ?, ?, NULL, ?)')
-    .run(url, normalizedCategoryId, title || url, bucketCount);
+    .run(url, categoryId, title || url, bucketCount);
   return lastInsertRowid;
 }
 
@@ -323,15 +349,12 @@ export function renameFeed(feedId, title) {
 }
 
 export function updateFeedCategory(feedId, categoryId) {
+  requireCategory(categoryId);
   const feed = db.prepare("SELECT * FROM feeds WHERE id = ?").get(feedId);
   if (!feed) return;
-  const normalizedCategoryId = categoryId ?? null;
-  const order = bucketOf(
-    db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId),
-    normalizedCategoryId
-  ).length;
+  const order = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId).length;
   db.prepare('UPDATE feeds SET categoryId = ?, "order" = ? WHERE id = ?').run(
-    normalizedCategoryId,
+    categoryId,
     order,
     feedId
   );

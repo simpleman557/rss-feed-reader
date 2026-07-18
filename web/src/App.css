@@ -198,12 +198,6 @@
   border-color: var(--danger-border) !important;
 }
 
-.uncategorized-label {
-  font-weight: 600;
-  color: var(--text-muted);
-  padding: 7px 10px;
-}
-
 .category-list {
   list-style: none;
   margin: 0;

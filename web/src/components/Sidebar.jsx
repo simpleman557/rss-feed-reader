@@ -31,7 +31,6 @@ export default function Sidebar({
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
   const [dragOverKey, setDragOverKey] = useState(null);
-  const [isDraggingFeed, setIsDraggingFeed] = useState(false);
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editCategoryName, setEditCategoryName] = useState("");
   const [editingFeedId, setEditingFeedId] = useState(null);
@@ -40,15 +39,13 @@ export default function Sidebar({
   // (and stays, until toggled) collapsed by default, including categories that haven't
   // loaded yet at mount time or get added later.
   const [expandedIds, setExpandedIds] = useState(() => new Set());
-  // undefined = no add-feed form open; null = open for Uncategorized; number = open for that category
+  // undefined = no add-feed form open; number = open for that category's id
   const [addFeedTarget, setAddFeedTarget] = useState(undefined);
   const [addFeedUrl, setAddFeedUrl] = useState("");
 
   function feedsForCategory(categoryId) {
     return feeds.filter((f) => (f.categoryId ?? null) === categoryId);
   }
-
-  const uncategorized = feedsForCategory(null);
 
   function toggleCollapsed(key) {
     setExpandedIds((prev) => {
@@ -148,11 +145,7 @@ export default function Sidebar({
             aria-current={selectedFeedId === f.id ? "true" : undefined}
             title={f.url}
             draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData("application/x-feed-id", String(f.id));
-              setIsDraggingFeed(true);
-            }}
-            onDragEnd={() => setIsDraggingFeed(false)}
+            onDragStart={(e) => e.dataTransfer.setData("application/x-feed-id", String(f.id))}
             onClick={() => onSelectFeed(f.id)}
           >
             <img
@@ -190,10 +183,14 @@ export default function Sidebar({
     }
   }
 
-  function handleDeleteCategory(cat) {
-    if (window.confirm(`Delete category "${cat.name}"? Its feeds will become Uncategorized.`)) {
-      onDeleteCategory(cat.id);
-      setEditingCategoryId(null);
+  async function handleDeleteCategory(cat) {
+    if (window.confirm(`Delete category "${cat.name}"?`)) {
+      try {
+        await onDeleteCategory(cat.id);
+        setEditingCategoryId(null);
+      } catch (err) {
+        window.alert(err.message);
+      }
     }
   }
 
@@ -249,8 +246,6 @@ export default function Sidebar({
     }
   }
 
-  const uncategorizedCollapsed = !expandedIds.has("uncategorized");
-
   return (
     <nav className="sidebar">
       {(() => {
@@ -293,34 +288,6 @@ export default function Sidebar({
       >
         Read Articles
       </button>
-
-      {(uncategorized.length > 0 || isDraggingFeed) && (
-        <>
-          <div {...dropZoneProps("uncategorized", null, "category-header uncategorized-header")}>
-            <div className="sidebar-item uncategorized-label">Uncategorized</div>
-            <button
-              className="collapse-btn"
-              title={uncategorizedCollapsed ? "Expand" : "Collapse"}
-              aria-label={uncategorizedCollapsed ? "Expand Uncategorized" : "Collapse Uncategorized"}
-              aria-expanded={!uncategorizedCollapsed}
-              onClick={() => toggleCollapsed("uncategorized")}
-            >
-              {uncategorizedCollapsed ? "▸" : "▾"}
-            </button>
-            <button
-              className="add-feed-btn"
-              title="Add feed"
-              onClick={() => startAddingFeed(null)}
-            >
-              +
-            </button>
-          </div>
-          {addFeedTarget === null && renderAddFeedForm(null)}
-          {!uncategorizedCollapsed && (
-            <ul className="feed-list">{uncategorized.map(renderFeedRow)}</ul>
-          )}
-        </>
-      )}
 
       <div className="sidebar-divider" />
 
