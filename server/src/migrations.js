@@ -27,7 +27,11 @@ function hasColumn(db, table, column) {
     .some((c) => c.name === column);
 }
 
-const MIGRATIONS = [
+// Exported (not just used internally by runMigrations) so tests can target a specific
+// migration's `run(db)` directly — e.g. seeding fixture rows, then exercising just the
+// dedupe migration's merge logic in isolation. Find by `name`, not array index, so
+// appending a new migration later doesn't shift any existing test's target.
+export const MIGRATIONS = [
   {
     version: 1,
     name: "initial schema",

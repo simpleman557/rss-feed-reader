@@ -3,6 +3,7 @@ import path from "path";
 import { ValidationError } from "./errors.js";
 import { DATA_DIR } from "./dataDir.js";
 import { runMigrations } from "./migrations.js";
+import { purgeExpiredArticles as purgeExpiredArticlesImpl } from "./retention.js";
 
 const DB_PATH = path.join(DATA_DIR, "feed-reader.db");
 console.log(`Database: ${DB_PATH}`);
@@ -323,24 +324,6 @@ export function toggleSaved(id) {
   return saved;
 }
 
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-
 export function purgeExpiredArticles() {
-  const articles = db.prepare("SELECT * FROM articles WHERE saved = 0").all();
-  const now = Date.now();
-  const del = db.prepare("DELETE FROM articles WHERE id = ?");
-  const tx = db.transaction(() => {
-    for (const a of articles) {
-      const isoTime = a.isoDate ? new Date(a.isoDate).getTime() : NaN;
-      const base = Number.isNaN(isoTime) ? new Date(a.insertedAt).getTime() : isoTime;
-      let anchor = base;
-      if (a.readAt) anchor = Math.max(anchor, new Date(a.readAt).getTime());
-      if (a.unsavedAt) anchor = Math.max(anchor, new Date(a.unsavedAt).getTime());
-
-      if (now > anchor + RETENTION_MS) {
-        del.run(a.id);
-      }
-    }
-  });
-  tx();
+  purgeExpiredArticlesImpl(db);
 }
