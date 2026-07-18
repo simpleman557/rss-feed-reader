@@ -48,6 +48,12 @@ cd web && npm run dev      # frontend, hot-reloading — http://localhost:5173
 
 Open **http://localhost:5173** in this mode — its dev server proxies `/api/*` requests to the backend. Either way, the backend itself has no hot-reload: after changing anything under `server/src/`, stop it (`Ctrl+C`) and start it again to pick up the change.
 
+**Running the backend tests**:
+
+```bash
+cd server && npm test
+```
+
 ## Notes
 
-- No automated tests.
+- Automated test coverage is partial, being built in phases — see SPEC.md's Testing section for what's covered so far and what's still pending.
