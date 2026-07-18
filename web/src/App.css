@@ -247,8 +247,14 @@
   height: 16px;
   flex-shrink: 0;
   border-radius: 4px;
-  object-fit: cover;
-  background: var(--bg);
+  object-fit: contain;
+  padding: 1px;
+  box-sizing: border-box;
+  /* Fixed (not theme-flipped) background: most favicons/logos are dark ink drawn on a
+     transparent or white backdrop, meant to sit on a light page — on a dark surface
+     they'd otherwise vanish. */
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .feed-title-text {
@@ -553,8 +559,12 @@
   height: 40px;
   flex-shrink: 0;
   border-radius: 7px;
-  object-fit: cover;
-  background: var(--bg-subtle);
+  object-fit: contain;
+  padding: 4px;
+  box-sizing: border-box;
+  /* Fixed (not theme-flipped) background — see .feed-icon. */
+  background: #fff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.1);
 }
 
 .article-main {

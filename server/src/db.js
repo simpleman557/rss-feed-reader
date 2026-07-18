@@ -46,6 +46,14 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_articles_isoDate ON articles(isoDate);
 `);
 
+// Added after the initial release — guarded so it's safe to run against a database
+// created before this column existed. Stores the feed's real homepage (parsed from the
+// RSS <link> element), used by faviconResolver.js to fetch that page's own declared
+// <link rel="icon"> tags rather than guessing a favicon.ico path off the feed URL.
+if (!db.prepare("PRAGMA table_info(feeds)").all().some((c) => c.name === "siteUrl")) {
+  db.exec("ALTER TABLE feeds ADD COLUMN siteUrl TEXT");
+}
+
 // One-time cleanup: before feedParser.js stripped revision fragments from guids (some
 // feeds, e.g. BBC's, reuse the same guid for a live-updated article but append an
 // incrementing "#0", "#8", etc. each time it's edited), each edit could insert a
@@ -270,14 +278,20 @@ function uniqueTitleInBucket(bucket, title) {
 // Runs on every successful refresh. The feed's title is only adopted from the feed
 // itself the first time (while our stored title is still the URL placeholder set at
 // creation) — once it has a real title, whether from that first sync or a manual
-// rename, refreshes must never clobber it. feedImageUrl has no such placeholder state
-// and always re-syncs, since the image can change independent of the title.
-export function syncFeedMetadata(feedId, title, feedImageUrl) {
+// rename, refreshes must never clobber it. feedImageUrl/siteUrl have no such
+// placeholder state and always re-sync to whatever refreshFeed.js decided this call
+// (it — not this function — decides whether that includes a fresh icon-discovery pass;
+// see refreshFeed.js for why that's not simply "every refresh").
+export function syncFeedMetadata(feedId, title, feedImageUrl, siteUrl) {
   const feed = db.prepare("SELECT * FROM feeds WHERE id = ?").get(feedId);
   if (!feed) return;
 
   if (feed.title !== feed.url) {
-    db.prepare("UPDATE feeds SET feedImageUrl = ? WHERE id = ?").run(feedImageUrl ?? null, feedId);
+    db.prepare("UPDATE feeds SET feedImageUrl = ?, siteUrl = ? WHERE id = ?").run(
+      feedImageUrl ?? null,
+      siteUrl ?? null,
+      feedId
+    );
     return;
   }
 
@@ -285,9 +299,10 @@ export function syncFeedMetadata(feedId, title, feedImageUrl) {
   const bucket = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId);
   const uniqueTitle = uniqueTitleInBucket(bucket, title);
   const order = findAlphabeticalOrder(bucket, (f) => f.title, uniqueTitle);
-  db.prepare('UPDATE feeds SET title = ?, feedImageUrl = ?, "order" = ? WHERE id = ?').run(
+  db.prepare('UPDATE feeds SET title = ?, feedImageUrl = ?, siteUrl = ?, "order" = ? WHERE id = ?').run(
     uniqueTitle,
     feedImageUrl ?? null,
+    siteUrl ?? null,
     order,
     feedId
   );

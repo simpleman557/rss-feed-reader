@@ -7,7 +7,7 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 - Subscribe to RSS/Atom feeds and organize them into categories (drag a feed onto a category to move it)
 - Today (a per-category digest of what's new), Read Later, and Read Articles as sidebar destinations, plus a plain unread list for any category or feed you select — all sortable newest- or oldest-first, and grouped by date ("Today", then calendar dates)
 - Unread and saved counts next to All Feeds, Today, and Read Later in the sidebar
-- Automatic per-article thumbnail extraction, handling the many incompatible ways publishers embed images across real-world feeds
+- Each feed's real site icon shown next to its articles and in the sidebar — discovered from the site itself (not a guessed favicon path or the feed's own often-unreliable declared image) and validated before use, so it's the actual logo rather than a broken image or an illegible wordmark banner
 - Auto-refreshes every 15 minutes (paused while the tab is hidden, to avoid wasted fetches)
 - A dense, focused interface (small rows, monospaced counts/timestamps, one accent color) with light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
 - Export your subscriptions to OPML
@@ -15,7 +15,7 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 
 ## Architecture
 
-- **`server/`** — Node/Express backend. Fetches and parses RSS/Atom feeds (working around the browser's CORS restrictions), extracts a thumbnail image per article, owns all persistent data in a SQLite file kept outside the project directory (see SPEC.md's Data Directory section), and can serve the built frontend directly so the whole app runs as one process.
+- **`server/`** — Node/Express backend. Fetches and parses RSS/Atom feeds (working around the browser's CORS restrictions), discovers and validates each feed's real site icon, owns all persistent data in a SQLite file kept outside the project directory (see SPEC.md's Data Directory section), and can serve the built frontend directly so the whole app runs as one process.
 - **`web/`** — Vite + React frontend. Talks to the backend over a small REST API and holds no data of its own.
 
 See [SPEC.md](SPEC.md) for the full design and behavior spec, including the data model, retention rules, and known gaps.

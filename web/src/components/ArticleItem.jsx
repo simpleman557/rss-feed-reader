@@ -11,16 +11,15 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
     parsed && !Number.isNaN(parsed.getTime())
       ? parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
       : "";
-  const sources = [article.imageUrl, feedImageUrl, PLACEHOLDER_ICON].filter(Boolean);
-  const [stage, setStage] = useState(0);
+  const [broken, setBroken] = useState(false);
 
   return (
     <li className={`article-item ${article.read ? "read" : "unread"} ${article.saved ? "saved" : ""}`}>
       <img
         className="article-image"
-        src={sources[Math.min(stage, sources.length - 1)]}
+        src={broken || !feedImageUrl ? PLACEHOLDER_ICON : feedImageUrl}
         alt=""
-        onError={() => setStage((s) => s + 1)}
+        onError={() => setBroken(true)}
       />
       <div className="article-main">
         <a
