@@ -35,8 +35,9 @@ function parseDeclaredSize(sizesAttr) {
 // Ranks candidates so the best is tried first: apple-touch-icon (always a proper square
 // mark meant for a home-screen tile, never a tiny favicon or a wordmark banner) beats a
 // plain icon/shortcut icon; a mask-icon is just an SVG silhouette so it's actively
-// deprioritized; within a tier, the largest declared size wins.
-function extractIconCandidates(html, baseUrl) {
+// deprioritized; within a tier, the largest declared size wins. Exported (not just used
+// internally) so tests can check the ranking directly without any network involved.
+export function extractIconCandidates(html, baseUrl) {
   const candidates = [];
   let match;
   ICON_LINK_REGEX.lastIndex = 0;
