@@ -77,14 +77,16 @@ export default function App() {
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(getStoredTheme);
   const mainRef = useRef(null);
-  // Snapshot of every article's read/saved flags as of the last *explicit* reload
-  // (manual Refresh, or this mount itself) — id -> { read, saved }. Marking an article
-  // read or saving/un-saving it updates `articles` immediately (so counts, the grey-out
-  // style, Read Articles, and Read Later's live membership all reflect it right away),
-  // but this snapshot deliberately does NOT move on a background auto-refresh, only on
-  // an explicit one. Combined with the OR-fallback below, that's what lets a just-read
-  // (or just-un-saved) article keep sitting in place, greyed out, until you explicitly
-  // ask for a refresh — instead of vanishing out from under you mid-read.
+  // Snapshot of every article's read/saved flags as of the last "you've moved on"
+  // moment — id -> { read, saved }. Marking an article read or saving/un-saving it
+  // updates `articles` immediately (so counts, the grey-out style, Read Articles, and
+  // Read Later's live membership all reflect it right away), but this snapshot
+  // deliberately does NOT move on a background auto-refresh — only on an explicit
+  // refresh/reload, or on navigating to a different destination/category/feed (see the
+  // two effects below for each trigger). Combined with the OR-fallback below, that's
+  // what lets a just-read (or just-un-saved) article keep sitting in place, greyed out,
+  // for as long as you're still looking at this same screen — without lingering
+  // forever once you've actually moved on and come back to it later.
   const [snapshot, setSnapshot] = useState(() => new Map());
 
   function wasUnreadInSnapshot(id) {
@@ -119,6 +121,18 @@ export default function App() {
   useEffect(() => {
     mainRef.current?.scrollTo(0, 0);
     window.scrollTo(0, 0);
+  }, [view, selectedCategoryId, selectedFeedId]);
+
+  // Navigating to a different destination/category/feed also counts as "moving on" for
+  // the snapshot above — otherwise a read/un-saved article you'd already left behind
+  // would keep lingering every single time you came back to that same screen, not just
+  // within the one sitting you changed it in. Re-syncs the snapshot from whatever
+  // `articles` already holds client-side — no network round-trip needed, unlike an
+  // explicit Refresh, which also re-fetches. Deliberately not keyed on `articles`
+  // itself, so a background auto-refresh alone still doesn't trigger this.
+  useEffect(() => {
+    setSnapshot(new Map(articles.map((a) => [a.id, { read: a.read, saved: a.saved }])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, selectedCategoryId, selectedFeedId]);
 
   const reloadAll = useCallback(async ({ resetSnapshot = false } = {}) => {
