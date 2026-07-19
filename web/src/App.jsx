@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ArticleList from "./components/ArticleList";
@@ -56,10 +56,22 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(getStoredTheme);
+  const mainRef = useRef(null);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Jump back to the top whenever the selected destination/category/feed changes —
+  // each shows a different list with its own height, so the old scroll position is
+  // meaningless there. Deliberately keyed only on the selection itself (not on sort,
+  // theme, or anything in the Customization card), so those don't yank the scroll
+  // position around. `.main` scrolls internally on desktop; the window scrolls on
+  // mobile (see App.css's 768px breakpoint) — reset both.
+  useEffect(() => {
+    mainRef.current?.scrollTo(0, 0);
+    window.scrollTo(0, 0);
+  }, [view, selectedCategoryId, selectedFeedId]);
 
   const reloadAll = useCallback(async () => {
     try {
@@ -310,7 +322,7 @@ export default function App() {
         theme={theme}
         onSetTheme={setTheme}
       />
-      <main className="main">
+      <main className="main" ref={mainRef}>
         <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} />
         {error && <div className="error-banner">{error}</div>}
         {view === "today" ? (
