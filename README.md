@@ -57,3 +57,4 @@ cd server && npm test
 ## Notes
 
 - Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see SPEC.md's Testing section for what each file covers. The frontend doesn't have automated tests yet.
+- A refresh occasionally takes a little longer than usual for a given feed — that's the app periodically (about once a month, per feed) re-checking the site's real icon in case it's changed, not a hang or a bug.
