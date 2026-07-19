@@ -56,4 +56,4 @@ cd server && npm test
 
 ## Notes
 
-- Automated test coverage is partial, being built in phases — see SPEC.md's Testing section for what's covered so far and what's still pending.
+- Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see SPEC.md's Testing section for what each file covers. The frontend doesn't have automated tests yet.
