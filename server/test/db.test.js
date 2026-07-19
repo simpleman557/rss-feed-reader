@@ -204,4 +204,29 @@ describe("syncFeedMetadata", () => {
     api.syncFeedMetadata(feedId, "Some Different Feed-Provided Title", null, null);
     assert.equal(api.getFeeds()[0].title, "My Custom Name");
   });
+
+  it("persists iconCheckedAt on first sync", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    const feedId = seedFeed(testDb, categoryId, {
+      url: "https://example.com/feed.xml",
+      title: "https://example.com/feed.xml",
+    });
+    const checkedAt = "2026-01-01T00:00:00.000Z";
+    api.syncFeedMetadata(feedId, "Real Title", null, null, checkedAt);
+    assert.equal(api.getFeeds()[0].iconCheckedAt, checkedAt);
+  });
+
+  it("updates iconCheckedAt on a later sync too, unlike title", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    const feedId = seedFeed(testDb, categoryId, {
+      url: "https://example.com/feed.xml",
+      title: "My Custom Name",
+      iconCheckedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const checkedAt = "2026-02-01T00:00:00.000Z";
+    api.syncFeedMetadata(feedId, "Feed-Provided Title", null, null, checkedAt);
+    assert.equal(api.getFeeds()[0].iconCheckedAt, checkedAt);
+  });
 });

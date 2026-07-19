@@ -107,3 +107,19 @@ export async function discoverFeedIcon(siteUrl) {
   }
   return null;
 }
+
+// Fetching and parsing a homepage is worth doing periodically, not on every single
+// refresh. 30 days is arbitrary but deliberately generous: a site changing its favicon
+// or this file's discovery logic improving are both rare, low-frequency events, and
+// rechecking mostly-unchanged icons more often would just be wasted homepage fetches
+// across every subscribed feed.
+const ICON_RECHECK_INTERVAL_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Used by refreshFeed.js to decide whether to call discoverFeedIcon again this refresh.
+// Kept here (not in refreshFeed.js, which imports db.js and so opens a real database
+// connection as a side effect) and as a pure function of `feed`/`now` — no network, no
+// database — so the date-math decision itself can be tested without mocking anything.
+export function shouldDiscoverIcon(feed, now = Date.now()) {
+  if (!feed.iconCheckedAt) return true;
+  return now - new Date(feed.iconCheckedAt).getTime() >= ICON_RECHECK_INTERVAL_MS;
+}

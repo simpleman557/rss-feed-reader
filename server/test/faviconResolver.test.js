@@ -1,6 +1,6 @@
 import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { extractIconCandidates, discoverFeedIcon } from "../src/faviconResolver.js";
+import { extractIconCandidates, discoverFeedIcon, shouldDiscoverIcon } from "../src/faviconResolver.js";
 
 describe("extractIconCandidates", () => {
   it("extracts a plain <link rel=\"icon\"> and resolves it against the base URL", () => {
@@ -178,5 +178,34 @@ describe("discoverFeedIcon", () => {
 
     assert.equal(result, null);
     assert.equal(globalThis.fetch.mock.callCount(), 0);
+  });
+});
+
+describe("shouldDiscoverIcon", () => {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const NOW = Date.parse("2026-02-01T00:00:00.000Z");
+
+  it("returns true when the feed has never been checked", () => {
+    assert.equal(shouldDiscoverIcon({ iconCheckedAt: null }, NOW), true);
+  });
+
+  it("returns false when checked recently", () => {
+    const feed = { iconCheckedAt: new Date(NOW - 1 * DAY_MS).toISOString() };
+    assert.equal(shouldDiscoverIcon(feed, NOW), false);
+  });
+
+  it("returns false just under the 30-day recheck interval", () => {
+    const feed = { iconCheckedAt: new Date(NOW - 29 * DAY_MS).toISOString() };
+    assert.equal(shouldDiscoverIcon(feed, NOW), false);
+  });
+
+  it("returns true right at the 30-day boundary", () => {
+    const feed = { iconCheckedAt: new Date(NOW - 30 * DAY_MS).toISOString() };
+    assert.equal(shouldDiscoverIcon(feed, NOW), true);
+  });
+
+  it("returns true well past the recheck interval", () => {
+    const feed = { iconCheckedAt: new Date(NOW - 90 * DAY_MS).toISOString() };
+    assert.equal(shouldDiscoverIcon(feed, NOW), true);
   });
 });

@@ -146,18 +146,19 @@ export function createDb(db) {
   // Runs on every successful refresh. The feed's title is only adopted from the feed
   // itself the first time (while our stored title is still the URL placeholder set at
   // creation) — once it has a real title, whether from that first sync or a manual
-  // rename, refreshes must never clobber it. feedImageUrl/siteUrl have no such
-  // placeholder state and always re-sync to whatever refreshFeed.js decided this call
-  // (it — not this function — decides whether that includes a fresh icon-discovery
-  // pass; see refreshFeed.js for why that's not simply "every refresh").
-  function syncFeedMetadata(feedId, title, feedImageUrl, siteUrl) {
+  // rename, refreshes must never clobber it. feedImageUrl/siteUrl/iconCheckedAt have no
+  // such placeholder state and always re-sync to whatever refreshFeed.js decided this
+  // call (it — not this function — decides whether that includes a fresh
+  // icon-discovery pass; see refreshFeed.js's shouldDiscoverIcon).
+  function syncFeedMetadata(feedId, title, feedImageUrl, siteUrl, iconCheckedAt) {
     const feed = db.prepare("SELECT * FROM feeds WHERE id = ?").get(feedId);
     if (!feed) return;
 
     if (feed.title !== feed.url) {
-      db.prepare("UPDATE feeds SET feedImageUrl = ?, siteUrl = ? WHERE id = ?").run(
+      db.prepare("UPDATE feeds SET feedImageUrl = ?, siteUrl = ?, iconCheckedAt = ? WHERE id = ?").run(
         feedImageUrl ?? null,
         siteUrl ?? null,
+        iconCheckedAt ?? null,
         feedId
       );
       return;
@@ -167,13 +168,9 @@ export function createDb(db) {
     const bucket = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId);
     const uniqueTitle = uniqueTitleInBucket(bucket, title);
     const order = findAlphabeticalOrder(bucket, (f) => f.title, uniqueTitle);
-    db.prepare('UPDATE feeds SET title = ?, feedImageUrl = ?, siteUrl = ?, "order" = ? WHERE id = ?').run(
-      uniqueTitle,
-      feedImageUrl ?? null,
-      siteUrl ?? null,
-      order,
-      feedId
-    );
+    db.prepare(
+      'UPDATE feeds SET title = ?, feedImageUrl = ?, siteUrl = ?, iconCheckedAt = ?, "order" = ? WHERE id = ?'
+    ).run(uniqueTitle, feedImageUrl ?? null, siteUrl ?? null, iconCheckedAt ?? null, order, feedId);
     normalizeFeedBucketOrder(categoryId);
   }
 

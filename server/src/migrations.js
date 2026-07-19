@@ -142,6 +142,21 @@ export const MIGRATIONS = [
       console.log(`Merged ${mergedGroups} duplicate article group(s), removed ${deletedRows} row(s).`);
     },
   },
+  {
+    version: 4,
+    name: "add feeds.iconCheckedAt",
+    run(db) {
+      // Records when icon discovery was last *attempted* for a feed (success or
+      // failure) — see refreshFeed.js's shouldDiscoverIcon, which uses this to
+      // periodically recheck an already-populated icon instead of only ever
+      // discovering once, so a feed can pick up a later faviconResolver.js
+      // improvement or a site's own icon change without anyone having to notice and
+      // re-run a one-off script.
+      if (!hasColumn(db, "feeds", "iconCheckedAt")) {
+        db.exec("ALTER TABLE feeds ADD COLUMN iconCheckedAt TEXT");
+      }
+    },
+  },
 ];
 
 export function runMigrations(db) {
