@@ -289,8 +289,8 @@ export default function App() {
   }, []);
 
   async function handleOpen(articleId) {
-    await markRead(articleId, true);
-    setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, read: true } : a)));
+    const { readAt } = await markRead(articleId, true);
+    setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, read: true, readAt } : a)));
   }
 
   async function handleToggleSaved(articleId) {

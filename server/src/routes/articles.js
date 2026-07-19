@@ -9,8 +9,8 @@ router.get("/", (req, res) => {
 
 router.patch("/:id/read", (req, res) => {
   const { read = true } = req.body;
-  markRead(req.params.id, read);
-  res.status(204).end();
+  const readAt = markRead(req.params.id, read);
+  res.json({ readAt });
 });
 
 router.patch("/:id/saved", (req, res) => {

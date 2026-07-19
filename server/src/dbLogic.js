@@ -238,6 +238,7 @@ export function createDb(db) {
     if (!article) return;
     const readAt = read && !article.read ? new Date().toISOString() : article.readAt;
     db.prepare("UPDATE articles SET read = ?, readAt = ? WHERE id = ?").run(read ? 1 : 0, readAt, id);
+    return readAt;
   }
 
   function toggleSaved(id) {
