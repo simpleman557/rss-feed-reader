@@ -45,22 +45,70 @@ const byReadAt = (a) => a.readAt || a.isoDate;
 
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
+// Which sidebar destination/category/feed was showing survives a reload of this same
+// tab (sessionStorage), but not closing the tab and opening a new one — sessionStorage
+// is cleared then, so a fresh session starts at the default below. That's exactly the
+// "reload keeps my place, close-and-reopen doesn't" split, with no manual detection of
+// which case we're in needed.
+const SESSION_KEY_VIEW = "feedReader.view";
+const SESSION_KEY_CATEGORY = "feedReader.selectedCategoryId";
+const SESSION_KEY_FEED = "feedReader.selectedFeedId";
+const DEFAULT_VIEW = "today";
+
+function readSession(key, fallback) {
+  const raw = sessionStorage.getItem(key);
+  if (raw === null) return fallback;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+}
+
 export default function App() {
   const [categories, setCategories] = useState([]);
   const [feeds, setFeeds] = useState([]);
   const [articles, setArticles] = useState([]);
-  const [view, setView] = useState("all");
+  const [view, setView] = useState(() => readSession(SESSION_KEY_VIEW, DEFAULT_VIEW));
   const [sort, setSort] = useState("newest");
-  const [selectedCategoryId, setSelectedCategoryId] = useState(null);
-  const [selectedFeedId, setSelectedFeedId] = useState(null);
+  const [selectedCategoryId, setSelectedCategoryId] = useState(() => readSession(SESSION_KEY_CATEGORY, null));
+  const [selectedFeedId, setSelectedFeedId] = useState(() => readSession(SESSION_KEY_FEED, null));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [theme, setTheme] = useState(getStoredTheme);
   const mainRef = useRef(null);
+  // Snapshot of every article's read/saved flags as of the last *explicit* reload
+  // (manual Refresh, or this mount itself) — id -> { read, saved }. Marking an article
+  // read or saving/un-saving it updates `articles` immediately (so counts, the grey-out
+  // style, Read Articles, and Read Later's live membership all reflect it right away),
+  // but this snapshot deliberately does NOT move on a background auto-refresh, only on
+  // an explicit one. Combined with the OR-fallback below, that's what lets a just-read
+  // (or just-un-saved) article keep sitting in place, greyed out, until you explicitly
+  // ask for a refresh — instead of vanishing out from under you mid-read.
+  const [snapshot, setSnapshot] = useState(() => new Map());
+
+  function wasUnreadInSnapshot(id) {
+    const snap = snapshot.get(id);
+    return snap ? !snap.read : false;
+  }
+
+  function wasSavedInSnapshot(id) {
+    const snap = snapshot.get(id);
+    return snap ? snap.saved : false;
+  }
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  // Persist the current destination/selection so a browser reload restores it (see the
+  // sessionStorage note above); sort is deliberately excluded — it just resets to
+  // "Newest first" on every load, reload or not.
+  useEffect(() => {
+    sessionStorage.setItem(SESSION_KEY_VIEW, JSON.stringify(view));
+    sessionStorage.setItem(SESSION_KEY_CATEGORY, JSON.stringify(selectedCategoryId));
+    sessionStorage.setItem(SESSION_KEY_FEED, JSON.stringify(selectedFeedId));
+  }, [view, selectedCategoryId, selectedFeedId]);
 
   // Jump back to the top whenever the selected destination/category/feed changes —
   // each shows a different list with its own height, so the old scroll position is
@@ -73,12 +121,17 @@ export default function App() {
     window.scrollTo(0, 0);
   }, [view, selectedCategoryId, selectedFeedId]);
 
-  const reloadAll = useCallback(async () => {
+  const reloadAll = useCallback(async ({ resetSnapshot = false } = {}) => {
     try {
       const [cats, fds, arts] = await Promise.all([getCategories(), getFeeds(), getArticles()]);
       setCategories(cats);
       setFeeds(fds);
       setArticles(arts);
+      // Only an explicit reload re-baselines the snapshot to match the fresh data —
+      // see the snapshot comment above for why a background refresh must not do this.
+      if (resetSnapshot) {
+        setSnapshot(new Map(arts.map((a) => [a.id, { read: a.read, saved: a.saved }])));
+      }
     } catch {
       // The whole app depends on the server; if it's unreachable, say so plainly
       // instead of silently rendering an empty shell.
@@ -87,7 +140,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    reloadAll();
+    reloadAll({ resetSnapshot: true });
   }, [reloadAll]);
 
   const feedsById = useMemo(() => new Map(feeds.map((f) => [f.id, f])), [feeds]);
@@ -116,15 +169,20 @@ export default function App() {
     }
 
     if (view === "readLater") {
+      // An article un-saved since the last explicit reload lingers here too (greyed
+      // out via its live `saved: false`, no accent bar) rather than vanishing — see
+      // the snapshot comment above.
       return sortByField(
-        articles.filter((a) => a.saved),
+        articles.filter((a) => a.saved || wasSavedInSnapshot(a.id)),
         sort,
         byIsoDate
       );
     }
 
-    // Browse mode: unread articles, optionally scoped to a selected feed/category.
-    let list = articles.filter((a) => !a.read);
+    // Browse mode: unread articles, optionally scoped to a selected feed/category. A
+    // just-read article lingers here too (greyed out via its live `read: true`) rather
+    // than vanishing — see the snapshot comment above.
+    let list = articles.filter((a) => !a.read || wasUnreadInSnapshot(a.id));
 
     if (selectedFeedId !== null) {
       list = list.filter((a) => a.feedId === selectedFeedId);
@@ -134,7 +192,7 @@ export default function App() {
     }
 
     return sortByField(list, sort, byIsoDate);
-  }, [articles, view, sort, selectedCategoryId, selectedFeedId, feeds]);
+  }, [articles, view, sort, selectedCategoryId, selectedFeedId, feeds, snapshot]);
 
   // Today digest: unread articles published today, grouped by category (named
   // categories sorted alphabetically, Uncategorized last), each capped to the top 10
@@ -144,7 +202,10 @@ export default function App() {
 
     const byCategoryId = new Map();
     for (const a of articles) {
-      if (a.read || !isToday(a.isoDate)) continue;
+      // A just-read article lingers here too until an explicit reload — see the
+      // snapshot comment above.
+      const stillCountsAsUnread = !a.read || wasUnreadInSnapshot(a.id);
+      if (!stillCountsAsUnread || !isToday(a.isoDate)) continue;
       const categoryId = feedsById.get(a.feedId)?.categoryId ?? null;
       if (!byCategoryId.has(categoryId)) byCategoryId.set(categoryId, []);
       byCategoryId.get(categoryId).push(a);
@@ -161,7 +222,7 @@ export default function App() {
       : namedGroups;
 
     return groups.map((g) => ({ ...g, articles: sortByField(g.articles, sort, byIsoDate).slice(0, 10) }));
-  }, [view, articles, feedsById, categories, sort]);
+  }, [view, articles, feedsById, categories, sort, snapshot]);
 
   function handleSelectCategory(categoryId) {
     setSelectedCategoryId(categoryId);
@@ -238,7 +299,12 @@ export default function App() {
     await reloadAll();
   }
 
-  async function handleRefresh() {
+  // `explicit` distinguishes a user-driven refresh (the button, or this mount's own
+  // initial load) from the silent 15-minute background timer below — only an explicit
+  // one re-baselines the snapshot, letting already-read/un-saved articles finally drop
+  // out of view. The background timer still fetches new content either way; it just
+  // doesn't prune anything out from under you while you're reading.
+  async function handleRefresh({ explicit = true } = {}) {
     setRefreshing(true);
     setError(null);
     try {
@@ -247,7 +313,7 @@ export default function App() {
         setError(`${errors.length} feed(s) failed to refresh.`);
       }
     } finally {
-      await reloadAll();
+      await reloadAll({ resetSnapshot: explicit });
       setRefreshing(false);
     }
   }
@@ -257,7 +323,7 @@ export default function App() {
 
     function startInterval() {
       if (intervalId) return;
-      intervalId = setInterval(handleRefresh, AUTO_REFRESH_INTERVAL_MS);
+      intervalId = setInterval(() => handleRefresh({ explicit: false }), AUTO_REFRESH_INTERVAL_MS);
     }
 
     function stopInterval() {
