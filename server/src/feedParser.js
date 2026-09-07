@@ -73,12 +73,11 @@ function itemImageUrl(item) {
   return firstImgSrc(item.contentEncoded) || firstImgSrc(item.content);
 }
 
-// A browser-like User-Agent, and fetching the XML ourselves rather than letting
-// rss-parser do it (it uses Node's older http/https module internally, which some
-// sites block via bot-protection that fingerprints the connection itself — a real
-// User-Agent header alone doesn't get past it, but Node's built-in fetch() does).
-const FEED_FETCH_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+// A non-browser User-Agent — a browser-like UA triggers WAF challenges (e.g.
+// ESPN's AWS WAF returns a 202 with an empty body expecting a JS challenge).
+// We also fetch the XML ourselves rather than letting rss-parser do it (it uses
+// Node's older http/https module internally, which some sites block).
+const FEED_FETCH_USER_AGENT = "FeedReader/1.0";
 
 // Cap on how long we'll wait for a single feed's server. Without this, one hung/slow
 // feed makes a refresh spin forever — and since /api/refresh awaits all feeds together,
@@ -108,7 +107,13 @@ export async function fetchAndParseFeed(url) {
     if (res.status >= 500) throw new Error(`Server error (${res.status}) — the feed's host is having issues`);
     throw new Error(`HTTP ${res.status} — the feed returned an unexpected response`);
   }
+  if (res.headers.get("x-amzn-waf-action") === "challenge") {
+    throw new Error("Blocked by bot protection — the site requires a browser to access this feed");
+  }
   const xml = await res.text();
+  if (!xml.trim()) {
+    throw new Error("Empty response — the server returned no content");
+  }
   let feed;
   try {
     feed = await parser.parseString(xml);
