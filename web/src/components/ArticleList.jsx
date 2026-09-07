@@ -47,9 +47,9 @@ function groupByDate(articles, getDate) {
 // `getDate` is optional: when provided, articles render under date headings; when
 // omitted (e.g. Today's per-category lists, which are already all "today"), the plain
 // flat list renders as before.
-export default function ArticleList({ articles, feedsById, onOpen, onToggleSaved, getDate }) {
+export default function ArticleList({ articles, feedsById, onOpen, onToggleSaved, getDate, emptyMessage }) {
   if (articles.length === 0) {
-    return <p className="empty-state">No articles here yet.</p>;
+    return <p className="empty-state">{emptyMessage || "No articles here yet."}</p>;
   }
 
   if (!getDate) {

@@ -8,6 +8,7 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 - Today (a per-category digest of what's new), Read Later, and Read Articles as sidebar destinations, plus a plain unread list for any category or feed you select — all sortable newest- or oldest-first, and grouped by date ("Today", then calendar dates)
 - Unread and saved counts next to All Feeds, Today, and Read Later in the sidebar
 - Each feed's real site icon shown next to its articles and in the sidebar — discovered from the site itself (not a guessed favicon path or the feed's own often-unreliable declared image) and validated before use, so it's the actual logo rather than a broken image or an illegible wordmark banner
+- Search across all articles by title or description — type in the search bar (top-left of the top bar) to filter results in real time across all feeds, including already-read ones; Escape or the native × button resets it
 - Auto-refreshes every 15 minutes (paused while the tab is hidden, to avoid wasted fetches)
 - A dense, focused interface (small rows, monospaced counts/timestamps, one accent color) with light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
 - Export your subscriptions to OPML

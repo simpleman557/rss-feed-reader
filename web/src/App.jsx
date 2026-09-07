@@ -78,6 +78,7 @@ export default function App() {
   const [error, setError] = useState(null);
   const [refreshErrors, setRefreshErrors] = useState([]);
   const [theme, setTheme] = useState(getStoredTheme);
+  const [searchQuery, setSearchQuery] = useState("");
   const mainRef = useRef(null);
   // Snapshot of every article's read/saved flags as of the last "you've moved on"
   // moment — id -> { read, saved }. Marking an article read or saving/un-saving it
@@ -209,6 +210,20 @@ export default function App() {
 
     return sortByField(list, sort, byIsoDate);
   }, [articles, view, sort, selectedCategoryId, selectedFeedId, feeds, snapshot]);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    return sortByField(
+      articles.filter(
+        (a) =>
+          (a.title || "").toLowerCase().includes(q) ||
+          (a.contentSnippet || "").toLowerCase().includes(q)
+      ),
+      sort,
+      byIsoDate
+    );
+  }, [searchQuery, articles, sort]);
 
   // Today digest: unread articles published today, grouped by category (named
   // categories sorted alphabetically, Uncategorized last), each capped to the top 10
@@ -413,9 +428,18 @@ export default function App() {
         onSetTheme={setTheme}
       />
       <main className="main" ref={mainRef}>
-        <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} />
+        <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
         {error && <ErrorBanner message={error} details={refreshErrors} />}
-        {view === "today" ? (
+        {searchResults !== null ? (
+          <ArticleList
+            articles={searchResults}
+            feedsById={feedsById}
+            onOpen={handleOpen}
+            onToggleSaved={handleToggleSaved}
+            getDate={byIsoDate}
+            emptyMessage={`No results for "${searchQuery.trim()}".`}
+          />
+        ) : view === "today" ? (
           <TodayDigest
             groups={todayGroups}
             feedsById={feedsById}
