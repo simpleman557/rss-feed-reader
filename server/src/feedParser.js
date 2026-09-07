@@ -96,15 +96,25 @@ export async function fetchAndParseFeed(url) {
     });
   } catch (err) {
     if (err.name === "TimeoutError") {
-      throw new Error(`Timed out after ${FEED_FETCH_TIMEOUT_MS / 1000}s`);
+      throw new Error(`Timed out — no response after ${FEED_FETCH_TIMEOUT_MS / 1000}s`);
     }
-    throw err;
+    throw new Error("Network error — couldn't reach the feed URL");
   }
   if (!res.ok) {
-    throw new Error(`Status code ${res.status}`);
+    if (res.status === 404) throw new Error("URL not found (404) — the feed may have moved or been removed");
+    if (res.status === 403) throw new Error("Access denied (403) — the site may be blocking automated requests");
+    if (res.status === 401) throw new Error("Unauthorized (401) — the feed may require authentication");
+    if (res.status === 410) throw new Error("Gone (410) — the feed has been permanently removed");
+    if (res.status >= 500) throw new Error(`Server error (${res.status}) — the feed's host is having issues`);
+    throw new Error(`HTTP ${res.status} — the feed returned an unexpected response`);
   }
   const xml = await res.text();
-  const feed = await parser.parseString(xml);
+  let feed;
+  try {
+    feed = await parser.parseString(xml);
+  } catch {
+    throw new Error("Couldn't parse the feed — the URL may not point to valid RSS/Atom");
+  }
   return {
     title: feed.title || url,
     feedImageUrl: feed.image?.url || faviconFallback(feed.link, url),

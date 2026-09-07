@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import ArticleList from "./components/ArticleList";
 import TodayDigest from "./components/TodayDigest";
+import ErrorBanner from "./components/ErrorBanner";
 import {
   getCategories,
   getFeeds,
@@ -75,6 +76,7 @@ export default function App() {
   const [selectedFeedId, setSelectedFeedId] = useState(() => readSession(SESSION_KEY_FEED, null));
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshErrors, setRefreshErrors] = useState([]);
   const [theme, setTheme] = useState(getStoredTheme);
   const mainRef = useRef(null);
   // Snapshot of every article's read/saved flags as of the last "you've moved on"
@@ -321,10 +323,18 @@ export default function App() {
   async function handleRefresh({ explicit = true } = {}) {
     setRefreshing(true);
     setError(null);
+    setRefreshErrors([]);
     try {
       const { errors } = await refreshAllFeeds();
       if (errors.length > 0) {
-        setError(`${errors.length} feed(s) failed to refresh.`);
+        setRefreshErrors(errors);
+        setError(
+          errors.length === 1
+            ? `1 feed failed to refresh.`
+            : `${errors.length} feeds failed to refresh.`
+        );
+      } else {
+        setRefreshErrors([]);
       }
     } finally {
       await reloadAll({ resetSnapshot: explicit });
@@ -404,7 +414,7 @@ export default function App() {
       />
       <main className="main" ref={mainRef}>
         <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} />
-        {error && <div className="error-banner">{error}</div>}
+        {error && <ErrorBanner message={error} details={refreshErrors} />}
         {view === "today" ? (
           <TodayDigest
             groups={todayGroups}

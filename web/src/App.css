@@ -477,6 +477,37 @@
   font-size: 0.9rem;
 }
 
+.error-banner-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.error-banner-toggle {
+  background: none;
+  border: none;
+  color: var(--danger);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.error-banner-details {
+  margin: 6px 0 0;
+  padding: 0 0 0 16px;
+  list-style: disc;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.error-banner-details li {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
 /* --- Article list --- */
 
 .article-list {
