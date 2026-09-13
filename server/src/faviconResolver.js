@@ -16,16 +16,38 @@
 // before trusting it — reject anything that isn't a real image, is suspiciously small
 // (catches stub placeholders), or only works over plain HTTP (catches the BBC Sport
 // failure mode) before it ever reaches the database.
+import { safeFetch, readTextCapped, readArrayBufferCapped } from "./safeFetch.js";
+
 const RESOLVER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
 const RESOLVER_TIMEOUT_MS = 8000;
 // A real icon is never this small — catches near-blank 1x1px placeholder stubs that
 // otherwise pass every other check (valid image, 200 OK).
 const MIN_ICON_BYTES = 512;
+// Upper bounds on what we'll pull down from an address the feed chose. A real icon
+// and a real homepage are both far under these; anything bigger is a mistake or an
+// attempt to exhaust memory, and either way isn't worth buffering.
+const MAX_ICON_BYTES = 5 * 1024 * 1024;
+const MAX_HOMEPAGE_BYTES = 2 * 1024 * 1024;
 
-const ICON_LINK_REGEX = /<link\s+[^>]*rel=["']([^"']*icon[^"']*)["'][^>]*>/gi;
-const HREF_REGEX = /href=["']([^"']+)["']/i;
-const SIZES_REGEX = /sizes=["']([^"']+)["']/i;
+// Matches a <link> tag and captures its attributes, which are then picked apart with
+// the simple per-attribute patterns below. This used to be one combined pattern that
+// looked for rel=...icon... inline, but that put two unbounded quantifiers either side
+// of a literal ([^>]*rel=["\']([^"\']*icon[^"\']*)["\'][^>]*>), which backtracks
+// catastrophically on a page with many "<link " openings and no ">" to stop on: 27 KB
+// of crafted HTML took 10 seconds, growing ~7x per doubling, and this runs against a
+// homepage whose address the feed itself chooses. Node is single-threaded, so that
+// blocks the whole server. The attribute run is now length-bounded, and rel is tested
+// in plain JS below, which removes the nesting entirely.
+const ICON_LINK_REGEX = /<link\s[^>]{0,2000}>/gi;
+const REL_REGEX = /\brel\s*=\s*["']([^"']*)["']/i;
+const HREF_REGEX = /\bhref\s*=\s*["']([^"']+)["']/i;
+const SIZES_REGEX = /\bsizes\s*=\s*["']([^"']+)["']/i;
+
+// Belt and braces alongside the bounded quantifier above: a real homepage's <head> is
+// nowhere near this big, and nothing is gained by scanning megabytes of body copy for
+// icon declarations.
+const MAX_ICON_SCAN_BYTES = 512 * 1024;
 
 function parseDeclaredSize(sizesAttr) {
   const match = /(\d+)x(\d+)/i.exec(sizesAttr || "");
@@ -40,10 +62,12 @@ function parseDeclaredSize(sizesAttr) {
 export function extractIconCandidates(html, baseUrl) {
   const candidates = [];
   let match;
+  const scannable = html.length > MAX_ICON_SCAN_BYTES ? html.slice(0, MAX_ICON_SCAN_BYTES) : html;
   ICON_LINK_REGEX.lastIndex = 0;
-  while ((match = ICON_LINK_REGEX.exec(html))) {
+  while ((match = ICON_LINK_REGEX.exec(scannable))) {
     const tag = match[0];
-    const rel = match[1].toLowerCase();
+    const rel = (REL_REGEX.exec(tag)?.[1] || "").toLowerCase();
+    if (!rel.includes("icon")) continue;
     const hrefMatch = HREF_REGEX.exec(tag);
     if (!hrefMatch) continue;
     let href;
@@ -59,11 +83,13 @@ export function extractIconCandidates(html, baseUrl) {
   return candidates;
 }
 
-async function fetchWithUA(url, options = {}) {
-  return fetch(url, {
-    ...options,
-    headers: { "User-Agent": RESOLVER_USER_AGENT, ...options.headers },
-    signal: AbortSignal.timeout(RESOLVER_TIMEOUT_MS),
+// Both targets here are chosen by someone else — the homepage by the feed's own <link>,
+// the icon href by that homepage's HTML — so neither is fetched directly; safeFetch
+// refuses private/internal addresses and re-checks every redirect hop.
+async function fetchWithUA(url) {
+  return safeFetch(url, {
+    headers: { "User-Agent": RESOLVER_USER_AGENT },
+    timeoutMs: RESOLVER_TIMEOUT_MS,
   });
 }
 
@@ -73,13 +99,13 @@ async function fetchWithUA(url, options = {}) {
 async function confirmIconUsable(url) {
   try {
     const httpsUrl = url.replace(/^http:\/\//i, "https://");
-    const res = await fetchWithUA(httpsUrl, { redirect: "follow" });
+    const res = await fetchWithUA(httpsUrl);
     // Rejects a same-origin bounce back down to http:// (the BBC Sport failure mode) —
     // res.url is the final URL after following redirects.
     if (!res.ok || !res.url.startsWith("https://")) return null;
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.startsWith("image/")) return null;
-    const bytes = await res.arrayBuffer();
+    const bytes = await readArrayBufferCapped(res, MAX_ICON_BYTES, "Icon");
     if (bytes.byteLength < MIN_ICON_BYTES) return null;
     return httpsUrl;
   } catch {
@@ -96,7 +122,7 @@ export async function discoverFeedIcon(siteUrl) {
   try {
     const res = await fetchWithUA(siteUrl);
     if (!res.ok) return null;
-    html = await res.text();
+    html = await readTextCapped(res, MAX_HOMEPAGE_BYTES, "Homepage");
   } catch {
     return null;
   }

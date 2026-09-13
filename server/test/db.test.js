@@ -87,6 +87,18 @@ describe("deleteCategory", () => {
 });
 
 describe("addFeed", () => {
+  it("rejects a URL that isn't a URL at all", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    assert.throws(() => api.addFeed("not a url", categoryId, "Test"), /valid URL/i);
+  });
+
+  it("rejects a non-http(s) scheme", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    assert.throws(() => api.addFeed("file:///etc/passwd", categoryId, "Test"), /http:\/\/ or https:\/\//i);
+  });
+
   it("rejects a missing categoryId", () => {
     const { api } = setup();
     assert.throws(() => api.addFeed("https://example.com/feed.xml", null, "Test"), /choose a category/i);

@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { getFeeds, purgeExpiredArticles } from "../db.js";
 import { refreshFeed } from "../refreshFeed.js";
+import { requireAppRequestHeader } from "../requestGuards.js";
 
 const router = Router();
 
-router.post("/", async (req, res) => {
+router.post("/", requireAppRequestHeader, async (req, res) => {
   const feeds = getFeeds();
   const results = await Promise.allSettled(feeds.map((feed) => refreshFeed(feed)));
   const errors = results

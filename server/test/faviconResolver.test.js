@@ -1,5 +1,6 @@
 import { describe, it, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import dns from "dns/promises";
 import { extractIconCandidates, discoverFeedIcon, shouldDiscoverIcon } from "../src/faviconResolver.js";
 
 describe("extractIconCandidates", () => {
@@ -59,6 +60,10 @@ describe("extractIconCandidates", () => {
 describe("discoverFeedIcon", () => {
   beforeEach(() => {
     mock.method(globalThis, "fetch");
+    // Fetches now go through safeFetch.js, which resolves each host and refuses private
+    // addresses. Stubbed so these stay pure unit tests with no live DNS dependency;
+    // safeFetch's own address checks are covered directly in safeFetch.test.js.
+    mock.method(dns, "lookup", async () => [{ address: "93.184.216.34", family: 4 }]);
   });
 
   afterEach(() => {
@@ -69,6 +74,7 @@ describe("discoverFeedIcon", () => {
     return {
       ok,
       url,
+      status: ok ? 200 : 500,
       headers: { get: (name) => (name.toLowerCase() === "content-type" ? contentType : null) },
       text: async () => "",
       arrayBuffer: async () => new ArrayBuffer(byteLength),
@@ -80,7 +86,7 @@ describe("discoverFeedIcon", () => {
   function mockHomepageAndIcon(html, iconResponse) {
     globalThis.fetch.mock.mockImplementation(async (url) => {
       if (url === "https://example.com/") {
-        return { ok: true, url, text: async () => html };
+        return { ok: true, url, status: 200, headers: { get: () => null }, text: async () => html };
       }
       return iconResponse(url);
     });
@@ -131,7 +137,13 @@ describe("discoverFeedIcon", () => {
     globalThis.fetch.mock.mockImplementation(async (url) => {
       requestedUrls.push(url);
       if (url === "https://example.com/") {
-        return { ok: true, url, text: async () => `<link rel="icon" href="http://example.com/favicon.png">` };
+        return {
+          ok: true,
+          url,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => `<link rel="icon" href="http://example.com/favicon.png">`,
+        };
       }
       return fakeResponse({ url: "https://example.com/favicon.png" });
     });
@@ -156,7 +168,12 @@ describe("discoverFeedIcon", () => {
   });
 
   it("returns null when the homepage itself can't be fetched", async () => {
-    globalThis.fetch.mock.mockImplementation(async (url) => ({ ok: false, url }));
+    globalThis.fetch.mock.mockImplementation(async (url) => ({
+      ok: false,
+      url,
+      status: 500,
+      headers: { get: () => null },
+    }));
 
     const result = await discoverFeedIcon("https://example.com/");
 
