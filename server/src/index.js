@@ -1,47 +1,27 @@
 import express from "express";
-import cors from "cors";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { fetchAndParseFeed } from "./feedParser.js";
 import categoriesRouter from "./routes/categories.js";
 import feedsRouter from "./routes/feeds.js";
 import articlesRouter from "./routes/articles.js";
 import refreshRouter from "./routes/refresh.js";
+import { requireLoopbackHost } from "./requestGuards.js";
+import { securityHeaders } from "./securityHeaders.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "..", "web", "dist");
 
 const app = express();
+// Don't advertise the framework/version in every response.
+app.disable("x-powered-by");
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// Before anything else: only this machine may talk to this server. Binding to loopback
+// isn't enough on its own — see requestGuards.js for how DNS rebinding gets around it.
+app.use(requireLoopbackHost);
+app.use(securityHeaders);
 app.use(express.json());
-
-app.get("/api/feed", async (req, res) => {
-  const { url } = req.query;
-
-  if (!url || typeof url !== "string") {
-    return res.status(400).json({ error: "Missing url query param" });
-  }
-
-  let parsed;
-  try {
-    parsed = new URL(url);
-  } catch {
-    return res.status(400).json({ error: "Invalid url" });
-  }
-  if (!["http:", "https:"].includes(parsed.protocol)) {
-    return res.status(400).json({ error: "url must be http or https" });
-  }
-
-  try {
-    const feed = await fetchAndParseFeed(url);
-    res.json(feed);
-  } catch (err) {
-    res.status(502).json({ error: `Failed to fetch/parse feed: ${err.message}` });
-  }
-});
 
 app.use("/api/categories", categoriesRouter);
 app.use("/api/feeds", feedsRouter);
@@ -74,6 +54,10 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message });
 });
 
-app.listen(PORT, () => {
+// Bound to loopback only, not the default 0.0.0.0. This API has no authentication, so
+// binding every interface would hand anyone else on the same network (coffee-shop
+// Wi-Fi, office LAN) full read/write access — including feed deletion, which cascades
+// to every saved article. Nothing but this machine's own browser needs to reach it.
+app.listen(PORT, "127.0.0.1", () => {
   console.log(`Feed proxy server listening on http://localhost:${PORT}`);
 });

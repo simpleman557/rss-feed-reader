@@ -5,14 +5,9 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Feed Reader</title>
-    <script>
-      // Apply a saved Light/Dark override before first paint to avoid a flash.
-      // Absence of the key means "system", which the CSS handles on its own.
-      try {
-        var t = localStorage.getItem("theme");
-        if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-      } catch (e) {}
-    </script>
+    <!-- Plain render-blocking script (not module/defer) so the theme is set before first
+         paint; external so the CSP can stay script-src 'self'. See public/theme-init.js. -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

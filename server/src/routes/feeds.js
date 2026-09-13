@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getFeeds, addFeed, renameFeed, updateFeedCategory, deleteFeed } from "../db.js";
 import { refreshFeed } from "../refreshFeed.js";
+import { requireAppRequestHeader } from "../requestGuards.js";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.delete("/:id", (req, res) => {
   res.status(204).end();
 });
 
-router.post("/:id/refresh", async (req, res) => {
+router.post("/:id/refresh", requireAppRequestHeader, async (req, res) => {
   const feedId = Number(req.params.id);
   const feed = getFeeds().find((f) => f.id === feedId);
   if (!feed) {
