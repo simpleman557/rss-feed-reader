@@ -1,4 +1,22 @@
 import Parser from "rss-parser";
+import rssParserUtils from "rss-parser/lib/utils.js";
+import { stripHtml } from "./stripHtml.js";
+import { safeFetch, readTextCapped, BlockedAddressError, ResponseTooLargeError } from "./safeFetch.js";
+
+// rss-parser runs its own utils.stripHtml on every item's content while parsing, to build
+// contentSnippet, and that function is quadratic on hostile input (see stripHtml.js). It
+// can't be skipped or configured off, so it's swapped for an output-identical linear
+// version. rss-parser looks the function up on this shared module object each time it
+// calls it, so replacing the property is enough.
+if (typeof rssParserUtils.stripHtml !== "function") {
+  // Loud rather than silent: if an rss-parser upgrade moved this, the swap would quietly
+  // stop working and the stall would come back.
+  throw new Error(
+    "rss-parser's internal utils.stripHtml wasn't found, so its internals have changed and the " +
+      "linear replacement in stripHtml.js can't be installed. Check the installed rss-parser version."
+  );
+}
+rssParserUtils.stripHtml = stripHtml;
 
 const parser = new Parser({
   customFields: {
@@ -18,10 +36,26 @@ function faviconFallback(preferredUrl, fallbackUrl) {
   }
 }
 
+// Finds the first <img> that actually declares a src. Deliberately two simple patterns
+// rather than one combined /<img[^>]+src=["']([^"']+)["']/ : that version is quadratic
+// on article HTML containing many "<img " openings and no ">" (293 KB of it took 6.5
+// seconds, and this runs per item on every refresh), because each start position
+// rescans the remainder before failing. Both patterns below are length-bounded, and the
+// scanned region is capped, so the work per item stays flat no matter what a feed sends.
+const IMG_TAG_REGEX = /<img\s[^>]{0,2000}>/gi;
+const IMG_SRC_REGEX = /\bsrc\s*=\s*["']([^"']+)["']/i;
+const MAX_CONTENT_SCAN_BYTES = 256 * 1024;
+
 function firstImgSrc(html) {
   if (!html) return null;
-  const match = /<img[^>]+src=["']([^"']+)["']/i.exec(html);
-  return match ? match[1] : null;
+  const scannable = html.length > MAX_CONTENT_SCAN_BYTES ? html.slice(0, MAX_CONTENT_SCAN_BYTES) : html;
+  IMG_TAG_REGEX.lastIndex = 0;
+  let tag;
+  while ((tag = IMG_TAG_REGEX.exec(scannable))) {
+    const src = IMG_SRC_REGEX.exec(tag[0]);
+    if (src) return src[1];
+  }
+  return null;
 }
 
 // Some feeds (BBC's included) reuse the same guid for a live-updated article but
@@ -84,19 +118,28 @@ const FEED_FETCH_USER_AGENT = "FeedReader/1.0";
 // one dead feed would otherwise stall the entire batch's response indefinitely.
 const FEED_FETCH_TIMEOUT_MS = 15000;
 
-// Fetches and normalizes an RSS/Atom feed. Shared by the public /api/feed route and
-// the server-side refresh flow, so both use identical parsing/image-extraction logic.
+// Nothing obliges a remote server to stop sending. Without a ceiling, one feed that
+// streams indefinitely would buffer until the process dies; real feeds are a tiny
+// fraction of this.
+const MAX_FEED_BYTES = 5 * 1024 * 1024;
+
+// Fetches and normalizes an RSS/Atom feed. Goes through safeFetch so a feed URL can't
+// be used to reach into the private network, and so a public-looking URL that redirects
+// inward is refused at the hop rather than followed (see safeFetch.js).
 export async function fetchAndParseFeed(url) {
   let res;
   try {
-    res = await fetch(url, {
+    res = await safeFetch(url, {
       headers: { "User-Agent": FEED_FETCH_USER_AGENT },
-      signal: AbortSignal.timeout(FEED_FETCH_TIMEOUT_MS),
+      timeoutMs: FEED_FETCH_TIMEOUT_MS,
     });
   } catch (err) {
     if (err.name === "TimeoutError") {
       throw new Error(`Timed out — no response after ${FEED_FETCH_TIMEOUT_MS / 1000}s`);
     }
+    // Surfaced verbatim: "couldn't reach it" and "refused to reach it" are different
+    // problems, and a refusal should say so plainly in the refresh error list.
+    if (err instanceof BlockedAddressError) throw new Error(err.message);
     throw new Error("Network error — couldn't reach the feed URL");
   }
   if (!res.ok) {
@@ -110,7 +153,13 @@ export async function fetchAndParseFeed(url) {
   if (res.headers.get("x-amzn-waf-action") === "challenge") {
     throw new Error("Blocked by bot protection — the site requires a browser to access this feed");
   }
-  const xml = await res.text();
+  let xml;
+  try {
+    xml = await readTextCapped(res, MAX_FEED_BYTES, "Feed");
+  } catch (err) {
+    if (err instanceof ResponseTooLargeError) throw new Error(err.message);
+    throw new Error("Network error — couldn't read the feed response");
+  }
   if (!xml.trim()) {
     throw new Error("Empty response — the server returned no content");
   }

@@ -114,7 +114,24 @@ export function createDb(db) {
     }
   }
 
+  // A feed URL is only ever fetched via safeFetch (which refuses non-public addresses
+  // and non-http(s) schemes), so this isn't the security boundary — it's here so a
+  // typo or a paste of something that isn't a feed URL fails immediately, with a clear
+  // message, instead of being stored and then failing on every refresh forever.
+  function requireFetchableUrl(url) {
+    let parsed;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new ValidationError("That doesn't look like a valid URL.");
+    }
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new ValidationError("A feed URL has to start with http:// or https://.");
+    }
+  }
+
   function addFeed(url, categoryId, title) {
+    requireFetchableUrl(url);
     requireCategory(categoryId);
     const allFeeds = db.prepare("SELECT * FROM feeds").all();
 
