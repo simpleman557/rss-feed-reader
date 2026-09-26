@@ -34,5 +34,7 @@ export const {
   getArticles,
   markRead,
   toggleSaved,
+  getArticlesNeedingOgCheck,
+  setArticleOgImage,
   purgeExpiredArticles,
 } = createDb(db);

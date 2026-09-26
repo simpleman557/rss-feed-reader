@@ -1,4 +1,5 @@
 import { syncFeedMetadata, upsertArticles } from "./db.js";
+import { fillOgImagesForFeed } from "./ogImageFetcher.js";
 import { fetchAndParseFeed } from "./feedParser.js";
 import { discoverFeedIcon, shouldDiscoverIcon } from "./faviconResolver.js";
 import { isPublicUrl } from "./safeFetch.js";
@@ -32,5 +33,8 @@ export async function refreshFeed(feed) {
 
   syncFeedMetadata(feed.id, data.title || feed.title, feedImageUrl, data.link ?? null, iconCheckedAt);
   upsertArticles(feed.id, data.items || []);
+  // Fire-and-forget: fills og:image for new articles without a feed-provided image.
+  // Never awaited — the refresh response goes out immediately.
+  fillOgImagesForFeed(feed.id).catch(() => {});
   return data;
 }

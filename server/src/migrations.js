@@ -157,6 +157,18 @@ export const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 5,
+    name: "add articles.ogImageChecked",
+    run(db) {
+      // Tracks when we last attempted an Open Graph image fetch for an article, so
+      // ogImageFetcher.js skips articles it has already tried (successfully or not)
+      // and doesn't refetch them on every refresh. NULL = not yet attempted.
+      if (!hasColumn(db, "articles", "ogImageChecked")) {
+        db.exec("ALTER TABLE articles ADD COLUMN ogImageChecked TEXT");
+      }
+    },
+  },
 ];
 
 export function runMigrations(db) {

@@ -267,6 +267,22 @@ export function createDb(db) {
     return saved;
   }
 
+  function getArticlesNeedingOgCheck(feedId) {
+    return db
+      .prepare(
+        `SELECT id, link FROM articles
+         WHERE feedId = ? AND imageUrl IS NULL AND ogImageChecked IS NULL
+           AND link IS NOT NULL AND insertedAt > datetime('now', '-30 days')`
+      )
+      .all(feedId);
+  }
+
+  function setArticleOgImage(id, imageUrl, checkedAt) {
+    db.prepare(
+      "UPDATE articles SET imageUrl = ?, ogImageChecked = ? WHERE id = ?"
+    ).run(imageUrl ?? null, checkedAt, id);
+  }
+
   function purgeExpiredArticles() {
     purgeExpiredArticlesImpl(db);
   }
@@ -286,6 +302,8 @@ export function createDb(db) {
     getArticles,
     markRead,
     toggleSaved,
+    getArticlesNeedingOgCheck,
+    setArticleOgImage,
     purgeExpiredArticles,
   };
 }
