@@ -2,6 +2,8 @@ import Parser from "rss-parser";
 import rssParserUtils from "rss-parser/lib/utils.js";
 import { stripHtml } from "./stripHtml.js";
 import { safeFetch, readTextCapped, BlockedAddressError, ResponseTooLargeError } from "./safeFetch.js";
+import { dominantFeedImageUrl } from "./feedWideImage.js";
+import { isTrackingPixel } from "./trackingPixel.js";
 
 // rss-parser runs its own utils.stripHtml on every item's content while parsing, to build
 // contentSnippet, and that function is quadratic on hostile input (see stripHtml.js). It
@@ -46,6 +48,9 @@ const IMG_TAG_REGEX = /<img\s[^>]{0,2000}>/gi;
 const IMG_SRC_REGEX = /\bsrc\s*=\s*["']([^"']+)["']/i;
 const MAX_CONTENT_SCAN_BYTES = 256 * 1024;
 
+// Returns the first <img> src that looks like a real image, skipping tracking pixels so
+// the scan falls through to a genuine content image (or to null, i.e. the feed icon, when
+// the only image present is a pixel).
 function firstImgSrc(html) {
   if (!html) return null;
   const scannable = html.length > MAX_CONTENT_SCAN_BYTES ? html.slice(0, MAX_CONTENT_SCAN_BYTES) : html;
@@ -53,7 +58,7 @@ function firstImgSrc(html) {
   let tag;
   while ((tag = IMG_TAG_REGEX.exec(scannable))) {
     const src = IMG_SRC_REGEX.exec(tag[0]);
-    if (src) return src[1];
+    if (src && !isTrackingPixel(src[1])) return src[1];
   }
   return null;
 }
@@ -169,17 +174,34 @@ export async function fetchAndParseFeed(url) {
   } catch {
     throw new Error("Couldn't parse the feed — the URL may not point to valid RSS/Atom");
   }
+  const items = (feed.items || []).map((item) => ({
+    title: item.title || "(untitled)",
+    link: item.link,
+    guid: stripFragment(item.guid) || stripFragment(item.link),
+    isoDate: item.isoDate || item.pubDate || null,
+    contentSnippet: (item.contentSnippet || item.summary || "").trim().slice(0, 280),
+    imageUrl: itemImageUrl(item),
+  }));
+
+  // A single image repeated across the whole feed isn't a per-article picture, it's the
+  // feed's own logo/social-card stamped into every entry (see feedWideImage.js). Drop it
+  // from the items so those articles fall back to the clean feed icon — and, being
+  // imageUrl-less, become eligible for a real per-article og:image later (ogImageFetcher.js).
+  const feedWideImage = dominantFeedImageUrl(items.map((i) => i.imageUrl));
+  if (feedWideImage) {
+    for (const item of items) {
+      if (item.imageUrl === feedWideImage) item.imageUrl = null;
+    }
+  }
+
   return {
     title: feed.title || url,
     feedImageUrl: feed.image?.url || faviconFallback(feed.link, url),
     link: feed.link || url,
-    items: (feed.items || []).map((item) => ({
-      title: item.title || "(untitled)",
-      link: item.link,
-      guid: stripFragment(item.guid) || stripFragment(item.link),
-      isoDate: item.isoDate || item.pubDate || null,
-      contentSnippet: (item.contentSnippet || item.summary || "").trim().slice(0, 280),
-      imageUrl: itemImageUrl(item),
-    })),
+    // Non-null when this feed stamps the same image into (nearly) every entry, i.e. it's
+    // an icon-only feed with no real per-article pictures. refreshFeed.js uses it to skip
+    // og:image backfill and clear any images already stored for the feed.
+    feedWideImageUrl: feedWideImage,
+    items,
   };
 }

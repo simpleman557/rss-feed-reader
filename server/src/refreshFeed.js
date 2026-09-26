@@ -1,4 +1,5 @@
-import { syncFeedMetadata, upsertArticles } from "./db.js";
+import { syncFeedMetadata, upsertArticles, clearArticleImagesForFeed } from "./db.js";
+import { fillOgImagesForFeed } from "./ogImageFetcher.js";
 import { fetchAndParseFeed } from "./feedParser.js";
 import { discoverFeedIcon, shouldDiscoverIcon } from "./faviconResolver.js";
 import { isPublicUrl } from "./safeFetch.js";
@@ -32,5 +33,18 @@ export async function refreshFeed(feed) {
 
   syncFeedMetadata(feed.id, data.title || feed.title, feedImageUrl, data.link ?? null, iconCheckedAt);
   upsertArticles(feed.id, data.items || []);
+
+  if (data.feedWideImageUrl) {
+    // Icon-only feed: it repeats one logo across every entry, so it has no genuine
+    // per-article images (feedParser.js already nulled that logo out of the items). Clear
+    // anything previously stored for it — including og:image topic badges fetched before
+    // it was recognised as icon-only — and skip og backfill, so every article shows the
+    // one clean feed icon rather than a cropped logo or a scattering of topic badges.
+    clearArticleImagesForFeed(feed.id);
+  } else {
+    // Fire-and-forget: fills og:image for new articles without a feed-provided image.
+    // Never awaited — the refresh response goes out immediately.
+    fillOgImagesForFeed(feed.id).catch(() => {});
+  }
   return data;
 }

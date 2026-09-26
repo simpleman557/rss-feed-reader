@@ -1,3 +1,6 @@
+import { dominantFeedImageUrl } from "./feedWideImage.js";
+import { isTrackingPixel } from "./trackingPixel.js";
+
 // Lightweight schema/data migrations, tracked with SQLite's built-in `PRAGMA
 // user_version` — a single integer stored in the database file itself, meant for
 // exactly this purpose, so no extra table or dependency is needed. A full framework
@@ -154,6 +157,74 @@ export const MIGRATIONS = [
       // re-run a one-off script.
       if (!hasColumn(db, "feeds", "iconCheckedAt")) {
         db.exec("ALTER TABLE feeds ADD COLUMN iconCheckedAt TEXT");
+      }
+    },
+  },
+  {
+    version: 5,
+    name: "add articles.ogImageChecked",
+    run(db) {
+      // Tracks when we last attempted an Open Graph image fetch for an article, so
+      // ogImageFetcher.js skips articles it has already tried (successfully or not)
+      // and doesn't refetch them on every refresh. NULL = not yet attempted.
+      if (!hasColumn(db, "articles", "ogImageChecked")) {
+        db.exec("ALTER TABLE articles ADD COLUMN ogImageChecked TEXT");
+      }
+    },
+  },
+  {
+    version: 6,
+    name: "clear feed-wide duplicate article images",
+    run(db) {
+      // Older rows were stored before feedParser.js learned to reject an image repeated
+      // across a whole feed (see feedWideImage.js). Those rows are never rewritten on
+      // refresh (upsert is INSERT OR IGNORE), so a feed like Slashdot — which stamps the
+      // same social logo into every entry — would keep showing that cropped logo on every
+      // article indefinitely. Re-run the same detection over the existing data, per feed,
+      // and null out the offending image so those articles fall back to the clean feed
+      // icon (and become eligible for a real og:image on the next refresh). imageUrl-only:
+      // read/saved state is untouched.
+      const feedIds = db.prepare("SELECT DISTINCT feedId FROM articles").all().map((r) => r.feedId);
+      const clearStmt = db.prepare("UPDATE articles SET imageUrl = NULL WHERE feedId = ? AND imageUrl = ?");
+      let clearedFeeds = 0;
+      let clearedRows = 0;
+      for (const feedId of feedIds) {
+        const urls = db
+          .prepare("SELECT imageUrl FROM articles WHERE feedId = ?")
+          .all(feedId)
+          .map((r) => r.imageUrl);
+        const feedWideImage = dominantFeedImageUrl(urls);
+        if (!feedWideImage) continue;
+        const { changes } = clearStmt.run(feedId, feedWideImage);
+        clearedFeeds++;
+        clearedRows += changes;
+      }
+      if (clearedRows > 0) {
+        console.log(`Cleared feed-wide duplicate image from ${clearedRows} article(s) across ${clearedFeeds} feed(s).`);
+      }
+    },
+  },
+  {
+    version: 7,
+    name: "clear tracking-pixel article images",
+    run(db) {
+      // Rows stored before feedParser.js learned to skip tracking pixels (see
+      // trackingPixel.js) kept a 1x1 telemetry pixel as their "image", which renders as a
+      // blank box. Those rows are never rewritten on refresh (upsert is INSERT OR IGNORE),
+      // so clear the pixel here and let them fall back to the clean feed icon — or pick up
+      // a real og:image on the next refresh, since a nulled image makes them eligible for
+      // that backfill. imageUrl only; read/saved state is untouched.
+      const rows = db.prepare("SELECT id, imageUrl FROM articles WHERE imageUrl IS NOT NULL").all();
+      const clearStmt = db.prepare("UPDATE articles SET imageUrl = NULL WHERE id = ?");
+      let cleared = 0;
+      for (const row of rows) {
+        if (isTrackingPixel(row.imageUrl)) {
+          clearStmt.run(row.id);
+          cleared++;
+        }
+      }
+      if (cleared > 0) {
+        console.log(`Cleared tracking-pixel image from ${cleared} article(s).`);
       }
     },
   },
