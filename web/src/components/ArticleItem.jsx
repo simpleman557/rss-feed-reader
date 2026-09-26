@@ -12,12 +12,16 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
       ? parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
       : "";
   const [broken, setBroken] = useState(false);
+  const imgSrc = broken || (!article.imageUrl && !feedImageUrl)
+    ? PLACEHOLDER_ICON
+    : article.imageUrl || feedImageUrl;
+  const isPhoto = !broken && !!article.imageUrl;
 
   return (
     <li className={`article-item ${article.read ? "read" : "unread"} ${article.saved ? "saved" : ""}`}>
       <img
-        className="article-image"
-        src={broken || !feedImageUrl ? PLACEHOLDER_ICON : feedImageUrl}
+        className={`article-image${isPhoto ? " article-image--photo" : ""}`}
+        src={imgSrc}
         alt=""
         onError={() => setBroken(true)}
       />
