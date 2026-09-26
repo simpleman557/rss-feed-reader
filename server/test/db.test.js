@@ -1,7 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { createDb } from "../src/dbLogic.js";
-import { createTestDb, seedCategory, seedFeed } from "./helpers.js";
+import { createTestDb, seedCategory, seedFeed, seedArticle, getArticle } from "./helpers.js";
 
 function setup() {
   const testDb = createTestDb();
@@ -240,5 +240,57 @@ describe("syncFeedMetadata", () => {
     const checkedAt = "2026-02-01T00:00:00.000Z";
     api.syncFeedMetadata(feedId, "Feed-Provided Title", null, null, checkedAt);
     assert.equal(api.getFeeds()[0].iconCheckedAt, checkedAt);
+  });
+});
+
+
+describe("clearArticleImagesForFeed", () => {
+  it("clears every stored image for the feed and reports the count", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    const feedId = seedFeed(testDb, categoryId);
+    const withImg = seedArticle(testDb, feedId, { imageUrl: "https://a.fsdn.com/sd/topics/ai_64.png" });
+    const alsoImg = seedArticle(testDb, feedId, { imageUrl: "https://a.fsdn.com/sd/topics/space_64.png" });
+    const noImg = seedArticle(testDb, feedId, { imageUrl: null });
+
+    const changed = api.clearArticleImagesForFeed(feedId);
+
+    assert.equal(changed, 2, "only the two rows that had an image are counted");
+    assert.equal(getArticle(testDb, withImg).imageUrl, null);
+    assert.equal(getArticle(testDb, alsoImg).imageUrl, null);
+    assert.equal(getArticle(testDb, noImg).imageUrl, null);
+  });
+
+  it("preserves read/saved state while clearing images", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    const feedId = seedFeed(testDb, categoryId);
+    const id = seedArticle(testDb, feedId, {
+      imageUrl: "https://example.com/logo.png",
+      read: 1,
+      readAt: "2026-01-01T00:00:00.000Z",
+      saved: 1,
+    });
+
+    api.clearArticleImagesForFeed(feedId);
+
+    const row = getArticle(testDb, id);
+    assert.equal(row.imageUrl, null);
+    assert.equal(row.read, 1);
+    assert.equal(row.readAt, "2026-01-01T00:00:00.000Z");
+    assert.equal(row.saved, 1);
+  });
+
+  it("leaves other feeds' images untouched", () => {
+    const { testDb, api } = setup();
+    const categoryId = seedCategory(testDb);
+    const iconFeed = seedFeed(testDb, categoryId, { url: "https://icon.example/feed.xml" });
+    const photoFeed = seedFeed(testDb, categoryId, { url: "https://photo.example/feed.xml" });
+    seedArticle(testDb, iconFeed, { imageUrl: "https://icon.example/logo.png" });
+    const keep = seedArticle(testDb, photoFeed, { imageUrl: "https://photo.example/real.jpg" });
+
+    api.clearArticleImagesForFeed(iconFeed);
+
+    assert.equal(getArticle(testDb, keep).imageUrl, "https://photo.example/real.jpg");
   });
 });

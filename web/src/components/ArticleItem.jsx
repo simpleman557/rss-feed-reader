@@ -11,19 +11,31 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
     parsed && !Number.isNaN(parsed.getTime())
       ? parsed.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
       : "";
-  const [broken, setBroken] = useState(false);
-  const imgSrc = broken || (!article.imageUrl && !feedImageUrl)
-    ? PLACEHOLDER_ICON
-    : article.imageUrl || feedImageUrl;
-  const isPhoto = !broken && !!article.imageUrl;
+
+  // Ordered image fallback, best first:
+  //   1. the article's own image — a real per-article photo, shown edge-to-edge (--photo)
+  //   2. the feed's clean icon — the nice square favicon/apple-touch-icon
+  //   3. a generic placeholder that can't itself fail (an inline data: URI)
+  // A load error on any candidate (a 404, a hotlink block, a stray "undefined" src)
+  // records that URL as failed and drops to the next one, so a broken article image lands
+  // on the clean feed icon rather than skipping straight to the grey placeholder. Keyed on
+  // the URL, not an index, so it stays correct if a later refresh swaps in a new image.
+  const [failedSrc, setFailedSrc] = useState(() => new Set());
+  const candidates = [];
+  if (article.imageUrl) candidates.push({ url: article.imageUrl, photo: true });
+  if (feedImageUrl) candidates.push({ url: feedImageUrl, photo: false });
+  candidates.push({ url: PLACEHOLDER_ICON, photo: false });
+  const current = candidates.find((c) => !failedSrc.has(c.url)) ?? candidates[candidates.length - 1];
 
   return (
     <li className={`article-item ${article.read ? "read" : "unread"} ${article.saved ? "saved" : ""}`}>
       <img
-        className={`article-image${isPhoto ? " article-image--photo" : ""}`}
-        src={imgSrc}
+        className={`article-image${current.photo ? " article-image--photo" : ""}`}
+        src={current.url}
         alt=""
-        onError={() => setBroken(true)}
+        onError={() =>
+          setFailedSrc((prev) => (prev.has(current.url) ? prev : new Set(prev).add(current.url)))
+        }
       />
       <div className="article-main">
         <a

@@ -283,6 +283,18 @@ export function createDb(db) {
     ).run(imageUrl ?? null, checkedAt, id);
   }
 
+  // Wipes every stored per-article image for a feed. Used for an "icon-only" feed — one
+  // that stamps the same logo into every entry (see feedParser.js / feedWideImage.js), so
+  // it has no genuine per-article pictures. This clears both those logos and any og:image
+  // topic badges fetched for it before it was recognised as icon-only, so its articles
+  // fall back to the one clean feed icon. Touches imageUrl only; read/saved state is left
+  // alone. Returns the number of rows changed.
+  function clearArticleImagesForFeed(feedId) {
+    return db
+      .prepare("UPDATE articles SET imageUrl = NULL WHERE feedId = ? AND imageUrl IS NOT NULL")
+      .run(feedId).changes;
+  }
+
   function purgeExpiredArticles() {
     purgeExpiredArticlesImpl(db);
   }
@@ -304,6 +316,7 @@ export function createDb(db) {
     toggleSaved,
     getArticlesNeedingOgCheck,
     setArticleOgImage,
+    clearArticleImagesForFeed,
     purgeExpiredArticles,
   };
 }

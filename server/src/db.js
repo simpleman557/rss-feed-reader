@@ -36,5 +36,6 @@ export const {
   toggleSaved,
   getArticlesNeedingOgCheck,
   setArticleOgImage,
+  clearArticleImagesForFeed,
   purgeExpiredArticles,
 } = createDb(db);
