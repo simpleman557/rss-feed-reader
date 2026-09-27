@@ -6,6 +6,7 @@ import categoriesRouter from "./routes/categories.js";
 import feedsRouter from "./routes/feeds.js";
 import articlesRouter from "./routes/articles.js";
 import refreshRouter from "./routes/refresh.js";
+import importRouter from "./routes/import.js";
 import { requireLoopbackHost } from "./requestGuards.js";
 import { securityHeaders } from "./securityHeaders.js";
 
@@ -21,6 +22,11 @@ const PORT = process.env.PORT || 3001;
 // isn't enough on its own — see requestGuards.js for how DNS rebinding gets around it.
 app.use(requireLoopbackHost);
 app.use(securityHeaders);
+// OPML import posts a whole subscription list as JSON — thousands of entries is
+// realistic — which outgrows express.json()'s default 100 KB limit. It gets its own,
+// larger limit and is mounted before the global parser below, which would otherwise
+// reject the request first.
+app.use("/api/import", express.json({ limit: "2mb" }), importRouter);
 app.use(express.json());
 
 app.use("/api/categories", categoriesRouter);

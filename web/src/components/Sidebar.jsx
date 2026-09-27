@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { buildOPML } from "../data/opml";
+import { useRef, useState } from "react";
+import { buildOPML, formatImportSummary } from "../data/opml";
 import { PLACEHOLDER_ICON } from "../placeholderIcon";
 
 function Count({ n }) {
@@ -20,6 +20,7 @@ export default function Sidebar({
   onSelectReadArticles,
   onAddFeed,
   onAddCategory,
+  onImportOPML,
   onChangeFeedCategory,
   onRenameCategory,
   onRenameFeed,
@@ -42,6 +43,8 @@ export default function Sidebar({
   // undefined = no add-feed form open; number = open for that category's id
   const [addFeedTarget, setAddFeedTarget] = useState(undefined);
   const [addFeedUrl, setAddFeedUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef(null);
 
   function feedsForCategory(categoryId) {
     return feeds.filter((f) => (f.categoryId ?? null) === categoryId);
@@ -75,6 +78,21 @@ export default function Sidebar({
       setAddFeedUrl("");
     } catch (err) {
       window.alert(err.message);
+    }
+  }
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    // Clear the input so choosing the same file again still fires a change event.
+    e.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      window.alert(formatImportSummary(await onImportOPML(file)));
+    } catch (err) {
+      window.alert(err.message);
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -392,9 +410,18 @@ export default function Sidebar({
       <div className="sidebar-section">
         <div className="sidebar-section-label">Customization</div>
         <div className="sidebar-section-card">
-          <button className="sidebar-card-row" onClick={handleExportOPML}>
-            Export OPML
-          </button>
+          <div className="sidebar-card-row sidebar-card-row-split">
+            <button
+              className="sidebar-card-half"
+              onClick={() => importInputRef.current?.click()}
+              disabled={importing}
+            >
+              {importing ? "Importing\u2026" : "Import OPML"}
+            </button>
+            <button className="sidebar-card-half" onClick={handleExportOPML}>
+              Export OPML
+            </button>
+          </div>
           <div className="sidebar-card-row sidebar-card-row-theme">
             <div className="theme-control" role="group" aria-label="Appearance">
               {[
@@ -415,6 +442,13 @@ export default function Sidebar({
             </div>
           </div>
         </div>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".opml,.xml,text/xml,application/xml,text/x-opml"
+          hidden
+          onChange={handleImportFile}
+        />
       </div>
     </nav>
   );

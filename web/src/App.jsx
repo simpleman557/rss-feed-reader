@@ -15,9 +15,11 @@ import {
   updateCategoryName,
   deleteFeed as dbDeleteFeed,
   deleteCategory as dbDeleteCategory,
+  importOpml,
   markRead,
   toggleSaved,
 } from "./data/db";
+import { parseOPML } from "./data/opml";
 import { refreshAllFeeds, refreshFeed } from "./data/feeds";
 import { getStoredTheme, applyTheme } from "./theme";
 import "./App.css";
@@ -45,6 +47,11 @@ const byIsoDate = (a) => a.isoDate;
 const byReadAt = (a) => a.readAt || a.isoDate;
 
 const AUTO_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
+
+// Real OPML exports are tens of KB (about a MB for thousands of feeds). Kept in step with
+// the 2 MB body limit on the server's /api/import route, so an oversized file gets this
+// message instead of a bare "request entity too large" from the server.
+const MAX_OPML_FILE_BYTES = 2 * 1024 * 1024;
 
 // Which sidebar destination/category/feed was showing survives a reload of this same
 // tab (sessionStorage), but not closing the tab and opening a new one — sessionStorage
@@ -298,6 +305,26 @@ export default function App() {
     }
   }
 
+  // Parses in the browser, imports on the server, then reloads so the new categories and
+  // feeds appear. Fetching the new feeds' articles is kicked off but not awaited — for a
+  // big list it takes a while — so the caller can show the import summary right away.
+  // Resolves to that summary; the Sidebar owns showing it (and any error) to the user.
+  async function handleImportOPML(file) {
+    if (file.size > MAX_OPML_FILE_BYTES) {
+      throw new Error("That file is too large to be an OPML export.");
+    }
+    setError(null);
+    const outlines = parseOPML(await file.text());
+    const summary = await importOpml(outlines);
+    await reloadAll();
+    if (summary.feedsAdded > 0) {
+      handleRefresh().catch(() => {
+        setError("Couldn't reach the server to fetch the imported feeds. Hit Refresh to retry.");
+      });
+    }
+    return summary;
+  }
+
   async function handleAddCategory(name) {
     await dbAddCategory(name);
     await reloadAll();
@@ -419,6 +446,7 @@ export default function App() {
         onSelectReadArticles={handleSelectReadArticles}
         onAddFeed={handleAddFeed}
         onAddCategory={handleAddCategory}
+        onImportOPML={handleImportOPML}
         onChangeFeedCategory={handleChangeFeedCategory}
         onRenameCategory={handleRenameCategory}
         onRenameFeed={handleRenameFeed}

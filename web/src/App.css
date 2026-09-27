@@ -359,6 +359,15 @@
   background: var(--bg-subtle);
 }
 
+.sidebar-card-row:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.sidebar-card-row:disabled:hover {
+  background: none;
+}
+
 .sidebar-card-row + .sidebar-card-row {
   border-top: 1px solid var(--border);
 }
@@ -370,6 +379,44 @@
 
 .sidebar-card-row-theme:hover {
   background: none;
+}
+
+/* Import/Export OPML share one row, side by side, split by a hairline. Each half reuses
+   .sidebar-card-row's look but must undo the width/padding/hover it'd get from that
+   class alone, since the row itself (not each half) now carries that class. */
+.sidebar-card-row-split {
+  display: flex;
+  padding: 0;
+}
+
+.sidebar-card-half {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-card-half:hover {
+  background: var(--bg-subtle);
+}
+
+.sidebar-card-half:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.sidebar-card-half:disabled:hover {
+  background: none;
+}
+
+.sidebar-card-half + .sidebar-card-half {
+  border-left: 1px solid var(--border);
 }
 
 /* Appearance segmented control (System / Light / Dark). Sits inside a card row above,

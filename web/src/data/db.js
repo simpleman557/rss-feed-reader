@@ -70,6 +70,15 @@ export function deleteFeed(feedId) {
   return request(`/feeds/${feedId}`, { method: "DELETE" });
 }
 
+// Sends the outline tree parsed from an OPML file (see opml.js's parseOPML); resolves to
+// { feedsAdded, categoriesCreated, duplicates, invalid }.
+export function importOpml(outlines) {
+  return request("/import", {
+    method: "POST",
+    body: JSON.stringify({ outlines }),
+  });
+}
+
 // --- Articles ---
 
 export function getArticles() {
