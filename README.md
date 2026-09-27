@@ -10,8 +10,8 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 - Each feed's real site icon shown next to its articles and in the sidebar — discovered from the site itself (not a guessed favicon path or the feed's own often-unreliable declared image) and validated before use, so it's the actual logo rather than a broken image or an illegible wordmark banner
 - Search across all articles by title or description — type in the search bar (top-left of the top bar) to filter results in real time across all feeds, including already-read ones; Escape or the native × button resets it
 - Auto-refreshes every 15 minutes (paused while the tab is hidden, to avoid wasted fetches)
-- A dense, focused interface (small rows, monospaced counts/timestamps, one accent color) with light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
-- Export your subscriptions to OPML
+- A dense, focused interface (flush rows with no cards or shadows, monospaced counts/timestamps, one accent color) with light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
+- Import subscriptions from an OPML file, and export them back out — so moving from (or to) another reader is a file away. Import keeps your folders and feed names, skips feeds you already have, and reports anything it couldn't import
 - All data — subscriptions, categories, read/saved state — lives in a SQLite database file owned by the server, not the browser, so it survives clearing browser data and isn't tied to one browser profile. The file itself lives outside the app's install/code directory too (in your OS's normal per-app data location, e.g. `~/Library/Application Support/Feed Reader` on macOS), so updating or reinstalling the code never touches it
 
 ## Architecture
