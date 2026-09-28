@@ -21,7 +21,7 @@ export default function ErrorBanner({ message, details = [] }) {
         <ul className="error-banner-details">
           {details.map((e) => (
             <li key={e.feed.id}>
-              <strong>{e.feed.title}</strong> \u2014 {e.error}
+              <strong>{e.feed.title}</strong>{" \u2014 "}{e.error}
             </li>
           ))}
         </ul>
