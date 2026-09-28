@@ -665,11 +665,20 @@
   font-weight: 650;
 }
 
+/* A feed icon and a per-article photo are different kinds of asset, sized
+   accordingly, even though they share a grid cell: a favicon/apple-touch-icon is
+   usually declared nowhere near 92px (Slashdot's is a 32×32 favicon.ico, its only
+   declared icon at all — see faviconResolver.js) — stretching one to fill the same
+   92px-wide slot a photo gets just upscales it into visible blur. So the base rule
+   here (the icon case) stays a small, fixed, centered square regardless of the row's
+   height; only the --photo modifier below grows to fill the full slot. */
 .article-image {
   grid-area: image;
-  align-self: stretch;
-  width: 92px;
-  border-radius: 10px;
+  justify-self: center;
+  align-self: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
   object-fit: contain;
   padding: 6px;
   box-sizing: border-box;
@@ -679,6 +688,11 @@
 }
 
 .article-image--photo {
+  justify-self: stretch;
+  align-self: stretch;
+  width: 92px;
+  height: auto;
+  border-radius: 10px;
   object-fit: cover;
   padding: 0;
   background: var(--surface2);
