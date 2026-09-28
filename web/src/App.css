@@ -670,14 +670,29 @@
    usually declared nowhere near 92px (Slashdot's is a 32×32 favicon.ico, its only
    declared icon at all — see faviconResolver.js) — stretching one to fill the same
    92px-wide slot a photo gets just upscales it into visible blur. So the base rule
-   here (the icon case) stays a small, fixed, centered square regardless of the row's
-   height; only the --photo modifier below grows to fill the full slot. */
+   here (the icon case) renders at its own natural size, centered, clamped to a
+   24–48px range — `width`/`height: auto` plus matching `min-`/`max-width`/`height`,
+   not a fixed size — rather than a fixed 48px box: a fixed size still upscales
+   (and blurs) any icon smaller than it, and real favicons range wider than one feed's
+   worth of testing would catch (this repo's own subscribed feeds alone span a real
+   16×16 favicon.ico — smaller than Slashdot's 32×32 — up to a 512×512 PNG). Below
+   24px the icon is upscaled up to that floor so it doesn't look like a stray fragment
+   next to a bold two-line title; above 48px it's downscaled (downscaling a
+   high-resolution source is always sharp, unlike upscaling a low-resolution one) to
+   match the size a real per-article photo renders at in the eye. Anything already in
+   that range — the common case — renders pixel-for-pixel, no scaling at all. Only the
+   --photo modifier below grows to fill the row's full 92px slot, since a photo starts
+   with real resolution to spare. */
 .article-image {
   grid-area: image;
   justify-self: center;
   align-self: center;
-  width: 48px;
-  height: 48px;
+  width: auto;
+  height: auto;
+  min-width: 24px;
+  min-height: 24px;
+  max-width: 48px;
+  max-height: 48px;
   border-radius: 8px;
   object-fit: contain;
   padding: 6px;
@@ -692,6 +707,12 @@
   align-self: stretch;
   width: 92px;
   height: auto;
+  /* Reset the base rule's icon clamp — min-/max-width would otherwise cap a photo at
+     the icon's 48px ceiling too, since both classes are present on the same element. */
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  max-height: none;
   border-radius: 10px;
   object-fit: cover;
   padding: 0;
