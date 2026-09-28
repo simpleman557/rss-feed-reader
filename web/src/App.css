@@ -359,6 +359,15 @@
   background: var(--bg-subtle);
 }
 
+.sidebar-card-row:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.sidebar-card-row:disabled:hover {
+  background: none;
+}
+
 .sidebar-card-row + .sidebar-card-row {
   border-top: 1px solid var(--border);
 }
@@ -370,6 +379,44 @@
 
 .sidebar-card-row-theme:hover {
   background: none;
+}
+
+/* Import/Export OPML share one row, side by side, split by a hairline. Each half reuses
+   .sidebar-card-row's look but must undo the width/padding/hover it'd get from that
+   class alone, since the row itself (not each half) now carries that class. */
+.sidebar-card-row-split {
+  display: flex;
+  padding: 0;
+}
+
+.sidebar-card-half {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  color: var(--text);
+  font-size: 0.9rem;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-card-half:hover {
+  background: var(--bg-subtle);
+}
+
+.sidebar-card-half:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.sidebar-card-half:disabled:hover {
+  background: none;
+}
+
+.sidebar-card-half + .sidebar-card-half {
+  border-left: 1px solid var(--border);
 }
 
 /* Appearance segmented control (System / Light / Dark). Sits inside a card row above,
@@ -573,13 +620,26 @@
   text-align: center;
 }
 
-/* Dense, flush "Console" rows — no cards; hover raises a subtle surface + hairline. */
+/* Dense, flush "Console" rows — no cards; hover raises a subtle surface + hairline.
+   Grid-based (image / title / snippet / byline / save button, via grid-template-areas)
+   rather than flex-with-a-side-column: the same markup reflows into one column at any
+   width with no separate mobile rule needed, because the byline sits *under* the
+   snippet instead of competing with the title for horizontal space — see Recent
+   History for the layouts this replaced. `.article-main`/`.article-aside` use
+   `display: contents` so their children (title/snippet, feed/date) become direct grid
+   items of `.article-item` without changing the component's DOM structure. */
 .article-item {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  padding: 9px 10px;
+  display: grid;
+  grid-template-columns: 92px 1fr auto 26px;
+  grid-template-areas:
+    "image title   title   save"
+    "image snippet snippet save"
+    "image feed    date    save";
+  column-gap: 14px;
+  row-gap: 3px;
+  padding: 12px 10px;
   border-radius: 8px;
+  align-items: start;
   transition: background-color 0.12s ease;
 }
 
@@ -602,16 +662,40 @@
 }
 
 .article-item.unread .article-title {
-  font-weight: 600;
+  font-weight: 650;
 }
 
+/* A feed icon and a per-article photo are different kinds of asset, sized
+   accordingly, even though they share a grid cell: a favicon/apple-touch-icon is
+   usually declared nowhere near 92px (Slashdot's is a 32×32 favicon.ico, its only
+   declared icon at all — see faviconResolver.js) — stretching one to fill the same
+   92px-wide slot a photo gets just upscales it into visible blur. So the base rule
+   here (the icon case) renders at its own natural size, centered, clamped to a
+   24–48px range — `width`/`height: auto` plus matching `min-`/`max-width`/`height`,
+   not a fixed size — rather than a fixed 48px box: a fixed size still upscales
+   (and blurs) any icon smaller than it, and real favicons range wider than one feed's
+   worth of testing would catch (this repo's own subscribed feeds alone span a real
+   16×16 favicon.ico — smaller than Slashdot's 32×32 — up to a 512×512 PNG). Below
+   24px the icon is upscaled up to that floor so it doesn't look like a stray fragment
+   next to a bold two-line title; above 48px it's downscaled (downscaling a
+   high-resolution source is always sharp, unlike upscaling a low-resolution one) to
+   match the size a real per-article photo renders at in the eye. Anything already in
+   that range — the common case — renders pixel-for-pixel, no scaling at all. Only the
+   --photo modifier below grows to fill the row's full 92px slot, since a photo starts
+   with real resolution to spare. */
 .article-image {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: 7px;
+  grid-area: image;
+  justify-self: center;
+  align-self: center;
+  width: auto;
+  height: auto;
+  min-width: 24px;
+  min-height: 24px;
+  max-width: 48px;
+  max-height: 48px;
+  border-radius: 8px;
   object-fit: contain;
-  padding: 4px;
+  padding: 6px;
   box-sizing: border-box;
   /* Fixed (not theme-flipped) background — see .feed-icon. */
   background: #fff;
@@ -619,64 +703,82 @@
 }
 
 .article-image--photo {
+  justify-self: stretch;
+  align-self: stretch;
+  width: 92px;
+  height: auto;
+  /* Reset the base rule's icon clamp — min-/max-width would otherwise cap a photo at
+     the icon's 48px ceiling too, since both classes are present on the same element. */
+  min-width: 0;
+  max-width: none;
+  min-height: 0;
+  max-height: none;
+  border-radius: 10px;
   object-fit: cover;
   padding: 0;
   background: var(--surface2);
 }
 
 .article-main {
-  flex: 1;
-  min-width: 0;
+  display: contents;
 }
 
 .article-title {
-  display: block;
+  grid-area: title;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
   text-decoration: none;
   color: var(--text);
-  font-size: 0.9rem;
+  font-size: 1.1rem;
   line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .article-snippet {
-  margin: 2px 0 0;
-  font-size: 0.8rem;
-  line-height: 1.3;
-  color: var(--text-muted);
-  white-space: nowrap;
+  grid-area: snippet;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-muted);
 }
 
 .article-aside {
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  text-align: right;
+  display: contents;
 }
 
 .article-feed {
-  font-size: 0.76rem;
+  grid-area: feed;
+  align-self: end;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.01em;
   color: var(--text-muted);
-  font-weight: 500;
-  max-width: 130px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .article-date {
+  grid-area: date;
+  justify-self: end;
+  align-self: end;
+  margin-top: 2px;
   font-family: var(--mono);
-  font-size: 0.72rem;
+  font-size: 0.77rem;
   color: var(--text-faint);
   font-variant-numeric: tabular-nums;
 }
 
 .save-btn {
+  grid-area: save;
+  justify-self: end;
+  align-self: start;
   border: none;
   background: none;
   font-size: 1.05rem;
@@ -684,7 +786,6 @@
   cursor: pointer;
   color: var(--text-faint);
   padding: 2px 3px;
-  flex-shrink: 0;
   transition: color 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
 }
 

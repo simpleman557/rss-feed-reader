@@ -6,12 +6,14 @@
 // once, against the real connection, and re-exports the result for the rest of the app.
 import { ValidationError } from "./errors.js";
 import { purgeExpiredArticles as purgeExpiredArticlesImpl } from "./retention.js";
+import { planOpmlImport } from "./opmlImport.js";
 import {
   RESERVED_CATEGORY_NAME,
   normalizeName,
   findAlphabeticalOrder,
   bucketOf,
   normalizeFeedUrl,
+  feedUrlProblem,
   uniqueTitleInBucket,
   articleId,
   rowToArticle,
@@ -119,15 +121,8 @@ export function createDb(db) {
   // typo or a paste of something that isn't a feed URL fails immediately, with a clear
   // message, instead of being stored and then failing on every refresh forever.
   function requireFetchableUrl(url) {
-    let parsed;
-    try {
-      parsed = new URL(url);
-    } catch {
-      throw new ValidationError("That doesn't look like a valid URL.");
-    }
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      throw new ValidationError("A feed URL has to start with http:// or https://.");
-    }
+    const problem = feedUrlProblem(url);
+    if (problem) throw new ValidationError(problem);
   }
 
   function addFeed(url, categoryId, title) {
@@ -202,6 +197,63 @@ export function createDb(db) {
       throw new ValidationError(`A feed named "${trimmed}" already exists in this category.`);
     }
     updateFeedTitle(feedId, trimmed);
+  }
+
+  // Applies an OPML import: the outline tree the browser parsed is flattened by
+  // planOpmlImport (pure — see opmlImport.js), then each feed goes through the same
+  // addFeed as a hand-typed one, so URL validation and duplicate detection are the very
+  // same rules. Runs in one transaction so an unexpected fault leaves nothing half
+  // imported; expected per-feed problems (an invalid URL) don't abort it, they're
+  // reported back in `invalid`.
+  //
+  // A folder that already exists (case-insensitively) is reused; a new one is created
+  // only once a feed is actually about to land in it, so a folder whose feeds were all
+  // duplicates doesn't leave an empty category behind. The OPML title is kept, made
+  // unique within the category and slotted in alphabetically — the same treatment a
+  // synced title gets — because a dead feed never refreshes and would otherwise be
+  // stuck showing its raw URL. That also means a later refresh won't overwrite it (see
+  // syncFeedMetadata), the same as a manual rename.
+  function importOpml(outlines) {
+    const { groups, invalid } = planOpmlImport(outlines);
+    const result = { feedsAdded: 0, categoriesCreated: 0, duplicates: 0, invalid: [...invalid] };
+
+    db.transaction(() => {
+      const categoryIds = new Map(getCategories().map((c) => [normalizeName(c.name), c.id]));
+      const seenUrls = new Set(db.prepare("SELECT url FROM feeds").all().map((f) => normalizeFeedUrl(f.url)));
+
+      for (const group of groups) {
+        const categoryKey = normalizeName(group.name);
+        for (const feed of group.feeds) {
+          const urlKey = normalizeFeedUrl(feed.url);
+          if (seenUrls.has(urlKey)) {
+            result.duplicates++;
+            continue;
+          }
+          if (!categoryIds.has(categoryKey)) {
+            categoryIds.set(categoryKey, addCategory(group.name));
+            result.categoriesCreated++;
+          }
+          const categoryId = categoryIds.get(categoryKey);
+          try {
+            const feedId = addFeed(feed.url, categoryId);
+            if (feed.title) {
+              const siblings = bucketOf(
+                db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId),
+                categoryId
+              );
+              updateFeedTitle(feedId, uniqueTitleInBucket(siblings, feed.title));
+            }
+            seenUrls.add(urlKey);
+            result.feedsAdded++;
+          } catch (err) {
+            if (!(err instanceof ValidationError)) throw err;
+            result.invalid.push({ name: feed.title, url: feed.url, reason: err.message });
+          }
+        }
+      }
+    })();
+
+    return result;
   }
 
   function updateFeedCategory(feedId, categoryId) {
@@ -309,6 +361,7 @@ export function createDb(db) {
     renameFeed,
     updateFeedCategory,
     deleteFeed,
+    importOpml,
     syncFeedMetadata,
     upsertArticles,
     getArticles,

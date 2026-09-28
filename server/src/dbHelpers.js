@@ -47,6 +47,23 @@ export function normalizeFeedUrl(rawUrl) {
   }
 }
 
+// Why a string can't be stored as a feed URL, or null if it can. Not a security boundary
+// (safeFetch is) — it exists so a typo, or a paste of something that isn't a feed URL,
+// fails immediately with a clear message instead of being saved and then failing on
+// every refresh forever. Shared by addFeed and the OPML import planner.
+export function feedUrlProblem(url) {
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "That doesn't look like a valid URL.";
+  }
+  if (!["http:", "https:"].includes(parsed.protocol)) {
+    return "A feed URL has to start with http:// or https://.";
+  }
+  return null;
+}
+
 // Two different feeds can legitimately share the same real-world title (e.g. two
 // editions of the same publication), so an auto-synced title that collides with a
 // sibling's in the same bucket gets a " (2)", " (3)", etc. suffix instead of silently

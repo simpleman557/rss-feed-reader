@@ -29,6 +29,7 @@ export const {
   renameFeed,
   updateFeedCategory,
   deleteFeed,
+  importOpml,
   syncFeedMetadata,
   upsertArticles,
   getArticles,
