@@ -294,7 +294,7 @@ Missing pieces of work within the app's already-decided scope and design — not
 - **Mark all as read** — close to a simple batch update; not yet decided on or built. (Unread/saved counts *are* now implemented — see Sidebar.)
 
 **Larger** — needs a design decision or real architecture before it's just "write the code":
-- No real deployment tooling (no Dockerfile, process manager config, HTTPS/reverse-proxy setup) — `npm start` from the repo root builds the frontend and runs it as a single local process, but that's still "run it on your own machine," not a hardened production deploy. Real effort here is somewhat moot unless the single-user/local-machine design goal itself changes.
+- Hosted deployment: a `Dockerfile` and `DEPLOY.md` cover Cloud Run (GCS-mounted SQLite, single instance, IAP for access). There's still no process-manager config or HTTPS setup for self-hosting outside Cloud Run, and background refresh isn't server-side (refresh is client-driven, so feeds only update while a tab is open).
 
 ## Future enhancements
 

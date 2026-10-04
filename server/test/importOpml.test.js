@@ -183,3 +183,29 @@ describe("importOpml", () => {
     assert.ok(elapsed < 10000, `500 feeds took ${elapsed}ms`);
   });
 });
+
+describe("upsertArticles", () => {
+  const item = (imageUrl) => ({ guid: "https://a.example/1", link: "https://a.example/1", title: "One", imageUrl });
+
+  it("fills in a missing image on an article that's already stored", () => {
+    const { testDb, api } = setup();
+    const feedId = seedFeed(testDb, seedCategory(testDb));
+    api.upsertArticles(feedId, [item(null)]);
+    api.upsertArticles(feedId, [item("https://cdn.example/1.jpg")]);
+    const [article] = api.getArticles();
+    assert.equal(article.imageUrl, "https://cdn.example/1.jpg");
+  });
+
+  it("never replaces an image that's already stored, or touches read state", () => {
+    const { testDb, api } = setup();
+    const feedId = seedFeed(testDb, seedCategory(testDb));
+    api.upsertArticles(feedId, [item("https://cdn.example/first.jpg")]);
+    const [stored] = api.getArticles();
+    api.markRead(stored.id);
+    api.upsertArticles(feedId, [item("https://cdn.example/second.jpg")]);
+    api.upsertArticles(feedId, [item(null)]);
+    const [article] = api.getArticles();
+    assert.equal(article.imageUrl, "https://cdn.example/first.jpg");
+    assert.equal(article.read, true);
+  });
+});

@@ -102,6 +102,33 @@ describe("requireLoopbackHost", () => {
   });
 });
 
+describe("requireLoopbackHost with ALLOWED_HOSTS", () => {
+  const prior = process.env.ALLOWED_HOSTS;
+  after(() => {
+    if (prior === undefined) delete process.env.ALLOWED_HOSTS;
+    else process.env.ALLOWED_HOSTS = prior;
+  });
+
+  it("accepts a listed hostname and still rejects others", async () => {
+    process.env.ALLOWED_HOSTS = "feeds.example.run.app, other.example";
+    assert.equal((await request({ headers: { host: "feeds.example.run.app" } })).status, 200);
+    assert.equal((await request({ headers: { host: "OTHER.example:443" } })).status, 200);
+    assert.equal((await request({ headers: { host: "attacker.example" } })).status, 403);
+  });
+
+  it("accepts any host only for an explicit *", async () => {
+    process.env.ALLOWED_HOSTS = "*";
+    assert.equal((await request({ headers: { host: "anything.example" } })).status, 200);
+  });
+
+  it("is loopback-only again when unset or empty", async () => {
+    process.env.ALLOWED_HOSTS = "";
+    assert.equal((await request({ headers: { host: "feeds.example.run.app" } })).status, 403);
+    delete process.env.ALLOWED_HOSTS;
+    assert.equal((await request({ headers: { host: "feeds.example.run.app" } })).status, 403);
+  });
+});
+
 describe("requireAppRequestHeader", () => {
   it("rejects a bodyless cross-site POST", async () => {
     const res = await request({ method: "POST", path: "/refresh", headers: { host: `localhost:${port}` } });

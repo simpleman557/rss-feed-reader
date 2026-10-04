@@ -274,9 +274,15 @@ export function createDb(db) {
   // existing read/saved state and imageUrl are preserved permanently across refreshes —
   // only genuinely new guids get inserted. Does the "skip if present" in a single
   // statement, with no separate existence check.
+  // An article already stored is left as it is, except that a missing image is filled in
+  // when the feed now supplies one, so an improvement to image extraction (feedParser.js)
+  // also reaches articles that were saved before it. An existing image, whether from the
+  // feed or from og:image, is never replaced.
   const insertArticleStmt = db.prepare(`
-    INSERT OR IGNORE INTO articles (id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, read, readAt, saved, unsavedAt)
+    INSERT INTO articles (id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, read, readAt, saved, unsavedAt)
     VALUES (@id, @feedId, @title, @link, @isoDate, @insertedAt, @contentSnippet, @imageUrl, 0, NULL, 0, NULL)
+    ON CONFLICT(id) DO UPDATE SET imageUrl = excluded.imageUrl
+      WHERE articles.imageUrl IS NULL AND excluded.imageUrl IS NOT NULL
   `);
 
   function upsertArticles(feedId, items) {

@@ -76,11 +76,29 @@ function stripFragment(value) {
   return i === -1 ? value : value.slice(0, i);
 }
 
+const IMAGE_EXTENSION_REGEX = /\.(jpe?g|png|gif|webp|avif)$/i;
+
+// media:content's medium and type attributes are both optional in the Media RSS spec, and
+// some feeds omit them. An entry that declares either is taken at its word; one that
+// declares neither is judged by its URL's file extension (query string ignored).
+function isImageMediaContent(entry) {
+  if (entry.medium || entry.type) {
+    return entry.medium === "image" || Boolean(entry.type?.startsWith("image/"));
+  }
+  try {
+    return IMAGE_EXTENSION_REGEX.test(new URL(entry.url).pathname);
+  } catch {
+    return false;
+  }
+}
+
 // Publishers embed a per-article image in wildly different ways — there's no single
 // standard. Tried in order, most-explicit-signal first:
 //   1. media:thumbnail — an explicit "this is the thumbnail" tag (e.g. BBC)
-//   2. media:content — only when it's actually declared as an image (e.g. NYT), so a
-//      video/audio media:content entry doesn't get mistaken for a picture
+//   2. media:content — only when it's actually an image, so a video/audio entry doesn't
+//      get mistaken for a picture: either declared as one (medium="image" or an image/*
+//      type, e.g. NYT) or, when it declares nothing at all (e.g. The Athletic), when its
+//      URL ends in an image file extension
 //   3. itunes:image — per-item podcast art (rss-parser decorates this automatically
 //      whenever the feed declares the itunes namespace)
 //   4. enclosure — only when its type is actually image/*, so a podcast's audio
@@ -93,14 +111,14 @@ function stripFragment(value) {
 // fetching and scraping every article's HTML on every refresh. That's a much heavier,
 // slower, more fragile operation than parsing the feed itself, so it's out of scope
 // here; those feeds correctly fall through to the feed-level image/favicon instead.
-function itemImageUrl(item) {
+export function itemImageUrl(item) {
   const thumbnail = item["media:thumbnail"];
   if (Array.isArray(thumbnail) && thumbnail[0]?.$?.url) return thumbnail[0].$.url;
 
   const media = item["media:content"];
-  const mediaEntry = Array.isArray(media) ? media[0]?.$ : null;
-  if (mediaEntry?.url && (mediaEntry.medium === "image" || mediaEntry.type?.startsWith("image/"))) {
-    return mediaEntry.url;
+  if (Array.isArray(media)) {
+    const image = media.map((m) => m?.$).find((m) => m?.url && isImageMediaContent(m));
+    if (image) return image.url;
   }
 
   if (item.itunes?.image) return item.itunes.image;
