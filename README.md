@@ -1,6 +1,6 @@
 # Feed Reader
 
-A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third-party services — just an RSS/Atom reader you run yourself, with subscriptions organized into categories, a 30-day read/unread retention window, and a "read later" queue.
+A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third-party services — just an RSS/Atom reader you run yourself (on your own machine, or privately on Google Cloud Run), with subscriptions organized into categories, a 30-day read/unread retention window, and a "read later" queue.
 
 ## Features
 
@@ -54,6 +54,17 @@ Open **http://localhost:5173** in this mode — its dev server proxies `/api/*` 
 ```bash
 cd server && npm test
 ```
+
+## Deploying to Cloud Run
+
+The app can also run as a private Google Cloud Run service, reachable from your phone or any browser. It's a single instance with the SQLite database on a mounted Cloud Storage bucket. Identity-Aware Proxy (IAP) puts Google sign-in in front of it, since the app has no login of its own. The repo's `Dockerfile` builds the image, and [DEPLOY.md](DEPLOY.md) has the step-by-step commands, the environment variables, and troubleshooting.
+
+Things that differ from running locally:
+
+- **Never deploy without IAP** (or at minimum `--no-allow-unauthenticated`). Anyone who can reach the app can read and change everything.
+- **Personal Gmail accounts need a custom OAuth client for IAP.** The default one only admits members of a Google Workspace/Cloud Identity organization, so you'd get "You don't have access" after signing in. DEPLOY.md covers the fix.
+- **Some sites block requests from cloud servers.** ESPN's league feeds (NBA, NFL, MLB, NHL, WNBA, college basketball and football) are read from ESPN's own news API when that happens, so they keep working. Other sites that do this show "Blocked by bot protection".
+- **Feeds refresh only while the app is open in a browser tab**, same as locally.
 
 ## Notes
 

@@ -12,7 +12,7 @@ deploy it without IAP (or `--no-allow-unauthenticated` at minimum).
 | `PORT` | set by Cloud Run | |
 | `FEED_READER_DATA_DIR` | `/data` (set in Dockerfile) | Where `feed-reader.db` lives; the GCS volume mounts here. |
 | `SQLITE_JOURNAL_MODE` | `DELETE` | WAL doesn't work on FUSE mounts. Default `WAL` locally. |
-| `ALLOWED_HOSTS` | `*` | The loopback Host guard otherwise 403s every `*.run.app` request. Safe only because IAP authenticates every request. |
+| `ALLOWED_HOSTS` | the service's `run.app` hostnames, comma-separated | The loopback Host guard otherwise 403s every `*.run.app` request. `*` also works, and is needed for the first deploy before the URLs exist, but is safe only because IAP authenticates every request. The live service lists its two hostnames. |
 
 ## Steps
 
@@ -42,6 +42,13 @@ gcloud run deploy feed-reader --source . --region=$REGION \
   --add-volume=name=data,type=cloud-storage,bucket=$BUCKET \
   --add-volume-mount=volume=data,mount-path=/data \
   --set-env-vars=SQLITE_JOURNAL_MODE=DELETE,ALLOWED_HOSTS=*
+
+# Then tighten ALLOWED_HOSTS to the service's actual hostnames (the ^@^ sets a
+# different list separator, since the value itself contains commas)
+URLS=$(gcloud run services describe feed-reader --region=$REGION \
+  --format='value(metadata.annotations."run.googleapis.com/urls")' | tr -d '[]" ' | sed 's#https://##g')
+gcloud run services update feed-reader --region=$REGION \
+  --update-env-vars=^@^ALLOWED_HOSTS=$URLS
 
 # Let yourself through IAP
 gcloud iap web add-iam-policy-binding --resource-type=cloud-run --service=feed-reader \
