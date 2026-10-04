@@ -116,4 +116,8 @@ gcloud iap settings get --resource-type=cloud-run --service=feed-reader \
 
 - `max-instances=1` is required: SQLite on GCS FUSE has no real cross-process locking.
 - Feeds refresh only while a browser tab is open (client-side 15-minute timer).
+- Some sites' bot protection blocks requests from cloud IP addresses whatever the User-Agent, so a
+  feed that works locally can fail here. ESPN's league RSS feeds (`/espn/rss/<league>/news`) hit
+  this and are read from ESPN's JSON news API instead (`server/src/espnNews.js`). Other sites show
+  "Blocked by bot protection".
 - If the FUSE-backed database proves flaky, move to Litestream-to-GCS or a hosted database.

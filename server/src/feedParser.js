@@ -4,6 +4,7 @@ import { stripHtml } from "./stripHtml.js";
 import { safeFetch, readTextCapped, BlockedAddressError, ResponseTooLargeError } from "./safeFetch.js";
 import { dominantFeedImageUrl } from "./feedWideImage.js";
 import { isTrackingPixel } from "./trackingPixel.js";
+import { espnNewsApiUrl, fetchEspnNews } from "./espnNews.js";
 
 // rss-parser runs its own utils.stripHtml on every item's content while parsing, to build
 // contentSnippet, and that function is quadratic on hostile input (see stripHtml.js). It
@@ -174,7 +175,15 @@ export async function fetchAndParseFeed(url) {
     throw new Error(`HTTP ${res.status} — the feed returned an unexpected response`);
   }
   if (res.headers.get("x-amzn-waf-action") === "challenge") {
-    throw new Error("Blocked by bot protection — the site requires a browser to access this feed");
+    // ESPN challenges requests from cloud hosts (e.g. Cloud Run); its news API doesn't.
+    const espnApiUrl = espnNewsApiUrl(url);
+    if (espnApiUrl) {
+      return fetchEspnNews(espnApiUrl, {
+        headers: { "User-Agent": FEED_FETCH_USER_AGENT },
+        timeoutMs: FEED_FETCH_TIMEOUT_MS,
+      });
+    }
+    throw new Error("Blocked by bot protection — the site refuses automated requests from this server");
   }
   let xml;
   try {
