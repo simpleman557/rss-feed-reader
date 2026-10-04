@@ -1,0 +1,11 @@
+.git
+.claude
+.DS_Store
+**/node_modules
+server/data
+server/test
+web/dist
+*.command
+*.md
+Dockerfile
+.dockerignore

@@ -17,6 +17,9 @@ const app = express();
 // Don't advertise the framework/version in every response.
 app.disable("x-powered-by");
 const PORT = process.env.PORT || 3001;
+// Loopback unless told otherwise. A container (Cloud Run) must set HOST=0.0.0.0 so the
+// platform's proxy can reach it, and should then rely on that platform's auth (IAP).
+const HOST = process.env.HOST || "127.0.0.1";
 
 // Before anything else: only this machine may talk to this server. Binding to loopback
 // isn't enough on its own — see requestGuards.js for how DNS rebinding gets around it.
@@ -60,10 +63,11 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message });
 });
 
-// Bound to loopback only, not the default 0.0.0.0. This API has no authentication, so
+// Bound to loopback by default, not 0.0.0.0. This API has no authentication, so
 // binding every interface would hand anyone else on the same network (coffee-shop
 // Wi-Fi, office LAN) full read/write access — including feed deletion, which cascades
 // to every saved article. Nothing but this machine's own browser needs to reach it.
-app.listen(PORT, "127.0.0.1", () => {
-  console.log(`Feed proxy server listening on http://localhost:${PORT}`);
+// Hosted deployments override with HOST=0.0.0.0 behind an authenticating proxy.
+app.listen(PORT, HOST, () => {
+  console.log(`Feed proxy server listening on http://${HOST}:${PORT}`);
 });

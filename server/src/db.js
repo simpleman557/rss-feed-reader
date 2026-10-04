@@ -11,7 +11,13 @@ const db = new Database(DB_PATH);
 db.pragma("foreign_keys = ON");
 // WAL mode: better concurrent read/write behavior and fewer fsync stalls than the
 // default rollback journal. Produces -wal/-shm sidecar files (already gitignored).
-db.pragma("journal_mode = WAL");
+// WAL needs shared memory that network/FUSE filesystems don't provide, so the Cloud Run
+// deployment (GCS volume mount) sets SQLITE_JOURNAL_MODE=DELETE.
+const JOURNAL_MODE = (process.env.SQLITE_JOURNAL_MODE || "WAL").toUpperCase();
+if (!["WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF"].includes(JOURNAL_MODE)) {
+  throw new Error(`Invalid SQLITE_JOURNAL_MODE: ${JOURNAL_MODE}`);
+}
+db.pragma(`journal_mode = ${JOURNAL_MODE}`);
 
 runMigrations(db);
 

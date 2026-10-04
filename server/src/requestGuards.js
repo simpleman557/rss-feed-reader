@@ -17,11 +17,26 @@ export function isLoopbackHostname(hostname) {
   return typeof hostname === "string" && LOOPBACK_HOSTNAMES.has(hostname.toLowerCase());
 }
 
+// Hosted deployments (Cloud Run) are reached under a public hostname, not loopback.
+// ALLOWED_HOSTS is a comma-separated list of extra hostnames to accept, or "*" for any
+// host. Unset (the default, and the local workflow) keeps loopback-only. Only use "*"
+// when something in front of the server already authenticates every request (e.g. IAP
+// on Cloud Run) — that is what makes DNS rebinding moot there.
+function isAllowedHostname(hostname) {
+  if (isLoopbackHostname(hostname)) return true;
+  if (typeof hostname !== "string") return false;
+  const allowed = (process.env.ALLOWED_HOSTS || "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter(Boolean);
+  return allowed.includes("*") || allowed.includes(hostname.toLowerCase());
+}
+
 export function requireLoopbackHost(req, res, next) {
   // req.hostname is the Host header with its port removed. It would prefer
   // X-Forwarded-Host only if Express's "trust proxy" setting were enabled, which it
   // isn't, so a client can't talk its way past this by sending that header.
-  if (isLoopbackHostname(req.hostname)) return next();
+  if (isAllowedHostname(req.hostname)) return next();
   res.status(403).json({ error: "Forbidden: unrecognized Host header" });
 }
 
