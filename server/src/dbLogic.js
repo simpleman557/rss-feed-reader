@@ -305,7 +305,14 @@ export function createDb(db) {
   }
 
   function getArticles() {
-    return db.prepare("SELECT * FROM articles").all().map(rowToArticle);
+    // Only the columns the UI reads — this is the biggest response the server sends, so
+    // the bookkeeping columns (insertedAt, unsavedAt, ogImageChecked) stay server-side.
+    return db
+      .prepare(
+        "SELECT id, feedId, title, link, isoDate, contentSnippet, imageUrl, read, readAt, saved FROM articles"
+      )
+      .all()
+      .map(rowToArticle);
   }
 
   function markRead(id, read = true) {

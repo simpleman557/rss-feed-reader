@@ -1,4 +1,5 @@
 import express from "express";
+import compression from "compression";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -9,6 +10,7 @@ import refreshRouter from "./routes/refresh.js";
 import importRouter from "./routes/import.js";
 import { requireLoopbackHost } from "./requestGuards.js";
 import { securityHeaders } from "./securityHeaders.js";
+import { setStaticCacheHeaders } from "./staticCache.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "..", "web", "dist");
@@ -25,6 +27,10 @@ const HOST = process.env.HOST || "127.0.0.1";
 // isn't enough on its own — see requestGuards.js for how DNS rebinding gets around it.
 app.use(requireLoopbackHost);
 app.use(securityHeaders);
+// gzip/brotli for everything (JSON and the built JS/CSS). GET /api/articles alone is
+// several MB of repetitive JSON, which shrinks by roughly an order of magnitude — the
+// difference between usable and painful on a phone's cellular connection.
+app.use(compression());
 // OPML import posts a whole subscription list as JSON — thousands of entries is
 // realistic — which outgrows express.json()'s default 100 KB limit. It gets its own,
 // larger limit and is mounted before the global parser below, which would otherwise
@@ -42,7 +48,7 @@ app.use("/api/refresh", refreshRouter);
 // in when a build actually exists, so the normal two-process dev workflow (`npm run
 // dev` in web/) is unaffected.
 if (fs.existsSync(WEB_DIST)) {
-  app.use(express.static(WEB_DIST));
+  app.use(express.static(WEB_DIST, { setHeaders: setStaticCacheHeaders }));
 } else {
   console.log(
     `No built frontend found at ${WEB_DIST} — run "npm run build" in web/ to serve it from here, or run "npm run dev" in web/ separately for local development.`

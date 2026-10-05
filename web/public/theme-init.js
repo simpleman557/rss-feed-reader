@@ -7,7 +7,12 @@
 // the stylesheet — so the data-theme attribute is set before anything paints.
 try {
   var t = localStorage.getItem("theme");
-  if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+  if (t === "light" || t === "dark") {
+    document.documentElement.setAttribute("data-theme", t);
+    // Match the browser-bar color (see theme.js's syncThemeColor); <head> metas are already parsed.
+    var c = t === "light" ? "#f7f8fa" : "#0a0c11";
+    document.querySelectorAll('meta[name="theme-color"]').forEach(function (m) { m.content = c; });
+  }
 } catch {
   // localStorage can throw in private mode; there's nothing to do but fall back to system.
 }

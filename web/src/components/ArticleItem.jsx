@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { PLACEHOLDER_ICON } from "../placeholderIcon";
 
+// Rows show the feed's clean icon, not each article's own photo — more compact and
+// uniform. The photo path below is intact: flip this to true to bring photos back (the
+// server still stores every article's imageUrl, and the CSS for them is still in place).
+const SHOW_ARTICLE_PHOTOS = false;
+
 export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, onToggleSaved, displayDate }) {
   // The list already groups by day (date-group headings), so each row shows just the
   // time. `displayDate` is the timestamp the active view is grouped/sorted on (e.g.
@@ -22,7 +27,7 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
   // the URL, not an index, so it stays correct if a later refresh swaps in a new image.
   const [failedSrc, setFailedSrc] = useState(() => new Set());
   const candidates = [];
-  if (article.imageUrl) candidates.push({ url: article.imageUrl, photo: true });
+  if (SHOW_ARTICLE_PHOTOS && article.imageUrl) candidates.push({ url: article.imageUrl, photo: true });
   if (feedImageUrl) candidates.push({ url: feedImageUrl, photo: false });
   candidates.push({ url: PLACEHOLDER_ICON, photo: false });
   const current = candidates.find((c) => !failedSrc.has(c.url)) ?? candidates[candidates.length - 1];
@@ -33,6 +38,8 @@ export default function ArticleItem({ article, feedTitle, feedImageUrl, onOpen, 
         className={`article-image${current.photo ? " article-image--photo" : ""}`}
         src={current.url}
         alt=""
+        loading="lazy"
+        decoding="async"
         onError={() =>
           setFailedSrc((prev) => (prev.has(current.url) ? prev : new Set(prev).add(current.url)))
         }

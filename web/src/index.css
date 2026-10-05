@@ -48,6 +48,16 @@ body {
   min-height: 100svh;
 }
 
+/* No 300ms tap delay / double-tap zoom on controls, and no grey flash on tap. */
+button,
+a,
+select,
+summary,
+label {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Consistent, visible keyboard-focus ring across all interactive elements. */
 :focus-visible {
   outline: 2px solid var(--accent);

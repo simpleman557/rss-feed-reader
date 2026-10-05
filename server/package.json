@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.11.1",
+    "compression": "^1.8.2",
     "express": "^4.19.2",
     "rss-parser": "^3.13.0"
   },

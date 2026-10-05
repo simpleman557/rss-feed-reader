@@ -28,6 +28,9 @@ export default function Sidebar({
   onDeleteCategory,
   theme,
   onSetTheme,
+  open,
+  onClose,
+  closeButtonRef,
 }) {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [showNewCategory, setShowNewCategory] = useState(false);
@@ -157,7 +160,7 @@ export default function Sidebar({
 
     return (
       <li key={f.id}>
-        <div className="feed-row">
+        <div className={`feed-row ${selectedFeedId === f.id ? "active" : ""}`}>
           <button
             className={`feed-item ${selectedFeedId === f.id ? "active" : ""}`}
             aria-current={selectedFeedId === f.id ? "true" : undefined}
@@ -170,6 +173,10 @@ export default function Sidebar({
               className="feed-icon"
               src={f.feedImageUrl || PLACEHOLDER_ICON}
               alt=""
+              width="16"
+              height="16"
+              loading="lazy"
+              decoding="async"
               onError={(e) => {
                 e.currentTarget.onerror = null;
                 e.currentTarget.src = PLACEHOLDER_ICON;
@@ -265,7 +272,20 @@ export default function Sidebar({
   }
 
   return (
-    <nav className="sidebar">
+    <nav id="sidebar" className={`sidebar${open ? " open" : ""}`} aria-label="Feeds">
+      <div className="sidebar-header">
+        <span className="sidebar-title">Feed Reader</span>
+        <button
+          ref={closeButtonRef}
+          type="button"
+          className="sidebar-close"
+          aria-label="Close menu"
+          onClick={onClose}
+        >
+          {"\u2715"}
+        </button>
+      </div>
+
       {(() => {
         const allActive =
           view === "all" && selectedCategoryId === null && selectedFeedId === null;
@@ -344,22 +364,19 @@ export default function Sidebar({
                   </div>
                 </form>
               ) : (
-                <div className="category-header">
+                <div className={`category-header ${selectedCategoryId === cat.id ? "active" : ""}`}>
+                  {/* One control does both jobs: show this category's articles and
+                      expand/collapse its feeds. */}
                   <button
                     className={`sidebar-item ${selectedCategoryId === cat.id ? "active" : ""}`}
                     aria-current={selectedCategoryId === cat.id ? "true" : undefined}
-                    onClick={() => onSelectCategory(cat.id)}
+                    aria-expanded={!collapsed}
+                    onClick={() => {
+                      onSelectCategory(cat.id);
+                      toggleCollapsed(key);
+                    }}
                   >
                     {cat.name}
-                  </button>
-                  <button
-                    className="collapse-btn"
-                    title={collapsed ? "Expand" : "Collapse"}
-                    aria-label={collapsed ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
-                    aria-expanded={!collapsed}
-                    onClick={() => toggleCollapsed(key)}
-                  >
-                    {collapsed ? "▸" : "▾"}
                   </button>
                   <button
                     className="add-feed-btn"
