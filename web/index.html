@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- Browser-bar color on phones. Two media-keyed tags follow the OS; theme.js and
+         theme-init.js overwrite both when Light/Dark is forced. Keep in sync with --bg. -->
+    <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fa" />
+    <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0c11" />
     <title>Feed Reader</title>
     <!-- Plain render-blocking script (not module/defer) so the theme is set before first
          paint; external so the CSP can stay script-src 'self'. See public/theme-init.js. -->

@@ -87,6 +87,13 @@ export default function App() {
   const [theme, setTheme] = useState(getStoredTheme);
   const [searchQuery, setSearchQuery] = useState("");
   const mainRef = useRef(null);
+  // Phone-width navigation: the sidebar is an off-canvas drawer below 768px (see App.css);
+  // on wider screens these are inert — the sidebar is always visible there.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const closeButtonRef = useRef(null);
+  const drawerWasOpen = useRef(false);
+  const lastRefreshAt = useRef(Date.now());
   // Snapshot of every article's read/saved flags as of the last "you've moved on"
   // moment — id -> { read, saved }. Marking an article read or saving/un-saving it
   // updates `articles` immediately (so counts, the grey-out style, Read Articles, and
@@ -121,6 +128,30 @@ export default function App() {
     sessionStorage.setItem(SESSION_KEY_CATEGORY, JSON.stringify(selectedCategoryId));
     sessionStorage.setItem(SESSION_KEY_FEED, JSON.stringify(selectedFeedId));
   }, [view, selectedCategoryId, selectedFeedId]);
+
+  // While the drawer is open: lock background scroll (CSS keys off the class, and only
+  // below 768px), close on Escape, and move focus into the drawer — then back to the menu
+  // button once it closes, so keyboard/screen-reader users aren't left stranded.
+  useEffect(() => {
+    const root = document.documentElement;
+    if (drawerOpen) {
+      root.classList.add("drawer-open");
+      closeButtonRef.current?.focus();
+      drawerWasOpen.current = true;
+      const onKeyDown = (e) => {
+        if (e.key === "Escape") setDrawerOpen(false);
+      };
+      document.addEventListener("keydown", onKeyDown);
+      return () => {
+        root.classList.remove("drawer-open");
+        document.removeEventListener("keydown", onKeyDown);
+      };
+    }
+    if (drawerWasOpen.current) {
+      drawerWasOpen.current = false;
+      menuButtonRef.current?.focus();
+    }
+  }, [drawerOpen]);
 
   // Jump back to the top whenever the selected destination/category/feed changes —
   // each shows a different list with its own height, so the old scroll position is
@@ -262,6 +293,15 @@ export default function App() {
     return groups.map((g) => ({ ...g, articles: sortByField(g.articles, sort, byIsoDate).slice(0, 10) }));
   }, [view, articles, feedsById, categories, sort, snapshot]);
 
+  // Picking a destination also dismisses the drawer. Done here rather than in an effect on
+  // the selection, because re-tapping the already-active item changes no state.
+  function closingDrawer(handler) {
+    return (...args) => {
+      setDrawerOpen(false);
+      return handler(...args);
+    };
+  }
+
   function handleSelectCategory(categoryId) {
     setSelectedCategoryId(categoryId);
     setSelectedFeedId(null);
@@ -378,8 +418,13 @@ export default function App() {
       } else {
         setRefreshErrors([]);
       }
+    } catch {
+      // A dropped connection (common on a phone) lands here; without this it was an
+      // unhandled rejection and the user saw nothing.
+      setError("Couldn't refresh — check your connection and try again.");
     } finally {
       await reloadAll({ resetSnapshot: explicit });
+      lastRefreshAt.current = Date.now();
       setRefreshing(false);
     }
   }
@@ -402,6 +447,11 @@ export default function App() {
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
         startInterval();
+        // Phones suspend background tabs' timers, so a tab left for a while comes back
+        // stale — catch up right away instead of waiting out a fresh 15 minutes.
+        if (Date.now() - lastRefreshAt.current >= AUTO_REFRESH_INTERVAL_MS) {
+          handleRefresh({ explicit: false });
+        }
       } else {
         stopInterval();
       }
@@ -430,6 +480,9 @@ export default function App() {
     setArticles((prev) => prev.map((a) => (a.id === articleId ? { ...a, saved } : a)));
   }
 
+  // Remounting ArticleList on these resets its render window (see ArticleList.jsx).
+  const listKey = `${view}|${selectedCategoryId}|${selectedFeedId}|${sort}|${searchQuery.trim()}`;
+
   return (
     <div className="app">
       <Sidebar
@@ -439,11 +492,16 @@ export default function App() {
         selectedCategoryId={selectedCategoryId}
         selectedFeedId={selectedFeedId}
         view={view}
-        onSelectCategory={handleSelectCategory}
-        onSelectFeed={handleSelectFeed}
-        onSelectToday={handleSelectToday}
-        onSelectReadLater={handleSelectReadLater}
-        onSelectReadArticles={handleSelectReadArticles}
+        // A category stays open in the drawer (tapping one also expands it and reveals its
+        // add/edit buttons); All Feeds is the same handler with null, and does close it.
+        onSelectCategory={(id) => {
+          if (id === null) setDrawerOpen(false);
+          handleSelectCategory(id);
+        }}
+        onSelectFeed={closingDrawer(handleSelectFeed)}
+        onSelectToday={closingDrawer(handleSelectToday)}
+        onSelectReadLater={closingDrawer(handleSelectReadLater)}
+        onSelectReadArticles={closingDrawer(handleSelectReadArticles)}
         onAddFeed={handleAddFeed}
         onAddCategory={handleAddCategory}
         onImportOPML={handleImportOPML}
@@ -454,12 +512,27 @@ export default function App() {
         onDeleteCategory={handleDeleteCategory}
         theme={theme}
         onSetTheme={setTheme}
+        open={drawerOpen}
+        onClose={() => setDrawerOpen(false)}
+        closeButtonRef={closeButtonRef}
       />
+      {drawerOpen && <div className="drawer-backdrop" aria-hidden="true" onClick={() => setDrawerOpen(false)} />}
       <main className="main" ref={mainRef}>
-        <TopBar sort={sort} onSetSort={setSort} onRefresh={handleRefresh} refreshing={refreshing} searchQuery={searchQuery} onSearchQueryChange={setSearchQuery} />
+        <TopBar
+          sort={sort}
+          onSetSort={setSort}
+          onRefresh={handleRefresh}
+          refreshing={refreshing}
+          searchQuery={searchQuery}
+          onSearchQueryChange={setSearchQuery}
+          menuOpen={drawerOpen}
+          onOpenMenu={() => setDrawerOpen(true)}
+          menuButtonRef={menuButtonRef}
+        />
         {error && <ErrorBanner message={error} details={refreshErrors} />}
         {searchResults !== null ? (
           <ArticleList
+            key={listKey}
             articles={searchResults}
             feedsById={feedsById}
             onOpen={handleOpen}
@@ -477,6 +550,7 @@ export default function App() {
           />
         ) : (
           <ArticleList
+            key={listKey}
             articles={visibleArticles}
             feedsById={feedsById}
             onOpen={handleOpen}
