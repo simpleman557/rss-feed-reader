@@ -33,7 +33,8 @@ export default function Sidebar({
   closeButtonRef,
 }) {
   const [newCategoryName, setNewCategoryName] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
+  // Which form is open in the Customization card: null, "category", or "feed".
+  const [customForm, setCustomForm] = useState(null);
   const [dragOverKey, setDragOverKey] = useState(null);
   const [editingCategoryId, setEditingCategoryId] = useState(null);
   const [editCategoryName, setEditCategoryName] = useState("");
@@ -43,9 +44,8 @@ export default function Sidebar({
   // (and stays, until toggled) collapsed by default, including categories that haven't
   // loaded yet at mount time or get added later.
   const [expandedIds, setExpandedIds] = useState(() => new Set());
-  // undefined = no add-feed form open; number = open for that category's id
-  const [addFeedTarget, setAddFeedTarget] = useState(undefined);
   const [addFeedUrl, setAddFeedUrl] = useState("");
+  const [addFeedCategoryId, setAddFeedCategoryId] = useState("");
   const [importing, setImporting] = useState(false);
   const importInputRef = useRef(null);
 
@@ -62,22 +62,30 @@ export default function Sidebar({
     });
   }
 
-  function startAddingFeed(categoryId) {
-    setAddFeedTarget(categoryId);
-    setAddFeedUrl("");
+  function toggleAddCategory() {
+    setNewCategoryName("");
+    setCustomForm((f) => (f === "category" ? null : "category"));
   }
 
-  function cancelAddingFeed() {
-    setAddFeedTarget(undefined);
+  // A feed has to belong to a category, so the form asks. Defaults to where you are: the
+  // selected category, else the category of the selected feed, else the first one.
+  function toggleAddFeed() {
+    if (customForm === "feed") {
+      setCustomForm(null);
+      return;
+    }
+    const selectedFeed = feeds.find((f) => f.id === selectedFeedId);
     setAddFeedUrl("");
+    setAddFeedCategoryId(String(selectedCategoryId ?? selectedFeed?.categoryId ?? categories[0]?.id ?? ""));
+    setCustomForm("feed");
   }
 
-  async function handleAddFeedSubmit(e, categoryId) {
+  async function handleAddFeedSubmit(e) {
     e.preventDefault();
-    if (!addFeedUrl.trim()) return;
+    if (!addFeedUrl.trim() || !addFeedCategoryId) return;
     try {
-      await onAddFeed(addFeedUrl.trim(), categoryId);
-      setAddFeedTarget(undefined);
+      await onAddFeed(addFeedUrl.trim(), Number(addFeedCategoryId));
+      setCustomForm(null);
       setAddFeedUrl("");
     } catch (err) {
       window.alert(err.message);
@@ -108,27 +116,6 @@ export default function Sidebar({
     a.download = "feeds.opml";
     a.click();
     URL.revokeObjectURL(url);
-  }
-
-  function renderAddFeedForm(categoryId) {
-    return (
-      <form className="add-feed-inline-form" onSubmit={(e) => handleAddFeedSubmit(e, categoryId)}>
-        <input
-          type="url"
-          required
-          autoFocus
-          placeholder="Feed URL (RSS/Atom)"
-          value={addFeedUrl}
-          onChange={(e) => setAddFeedUrl(e.target.value)}
-        />
-        <div className="edit-feed-actions">
-          <button type="submit">Add</button>
-          <button type="button" onClick={cancelAddingFeed}>
-            Cancel
-          </button>
-        </div>
-      </form>
-    );
   }
 
   function renderFeedRow(f) {
@@ -265,7 +252,7 @@ export default function Sidebar({
     try {
       await onAddCategory(newCategoryName.trim());
       setNewCategoryName("");
-      setShowNewCategory(false);
+      setCustomForm(null);
     } catch (err) {
       window.alert(err.message);
     }
@@ -379,13 +366,6 @@ export default function Sidebar({
                     {cat.name}
                   </button>
                   <button
-                    className="add-feed-btn"
-                    title="Add feed"
-                    onClick={() => startAddingFeed(cat.id)}
-                  >
-                    +
-                  </button>
-                  <button
                     className="edit-category-btn"
                     title="Edit category"
                     onClick={() => startEditingCategory(cat)}
@@ -394,7 +374,6 @@ export default function Sidebar({
                   </button>
                 </div>
               )}
-              {addFeedTarget === cat.id && renderAddFeedForm(cat.id)}
               {!collapsed && (
                 <ul className="feed-list">{feedsForCategory(cat.id).map(renderFeedRow)}</ul>
               )}
@@ -403,30 +382,83 @@ export default function Sidebar({
         })}
       </ul>
 
-      {showNewCategory ? (
-        <form className="add-category-form" onSubmit={handleAddCategory}>
-          <input
-            type="text"
-            required
-            autoFocus
-            placeholder="Category name"
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-          />
-          <button type="submit">Add</button>
-          <button type="button" onClick={() => setShowNewCategory(false)}>
-            Cancel
-          </button>
-        </form>
-      ) : (
-        <button className="new-category-btn" onClick={() => setShowNewCategory(true)}>
-          + Add Category
-        </button>
-      )}
-
       <div className="sidebar-section">
         <div className="sidebar-section-label">Customization</div>
         <div className="sidebar-section-card">
+          <div className="sidebar-card-row sidebar-card-row-split">
+            <button
+              className="sidebar-card-half"
+              aria-expanded={customForm === "category"}
+              onClick={toggleAddCategory}
+            >
+              Add category
+            </button>
+            <button
+              className="sidebar-card-half"
+              aria-expanded={customForm === "feed"}
+              onClick={toggleAddFeed}
+            >
+              Add feed
+            </button>
+          </div>
+          {customForm === "category" && (
+            <form className="customize-form" onSubmit={handleAddCategory}>
+              <label htmlFor="new-category-name">Category name</label>
+              <input
+                id="new-category-name"
+                type="text"
+                required
+                autoFocus
+                placeholder="Tech"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+              />
+              <div className="customize-form-actions">
+                <button type="submit">Add</button>
+                <button type="button" onClick={() => setCustomForm(null)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+          {customForm === "feed" && (
+            <form className="customize-form" onSubmit={handleAddFeedSubmit}>
+              {categories.length === 0 ? (
+                <p className="customize-form-note">Add a category first, then you can add feeds to it.</p>
+              ) : (
+                <>
+                  <label htmlFor="new-feed-url">Feed URL</label>
+                  <input
+                    id="new-feed-url"
+                    type="url"
+                    required
+                    autoFocus
+                    placeholder="https://example.com/feed.xml"
+                    value={addFeedUrl}
+                    onChange={(e) => setAddFeedUrl(e.target.value)}
+                  />
+                  <label htmlFor="new-feed-category">Category</label>
+                  <select
+                    id="new-feed-category"
+                    value={addFeedCategoryId}
+                    onChange={(e) => setAddFeedCategoryId(e.target.value)}
+                  >
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+              <div className="customize-form-actions">
+                {categories.length > 0 && <button type="submit">Add</button>}
+                <button type="button" onClick={() => setCustomForm(null)}>
+                  {categories.length > 0 ? "Cancel" : "Close"}
+                </button>
+              </div>
+            </form>
+          )}
           <div className="sidebar-card-row sidebar-card-row-split">
             <button
               className="sidebar-card-half"

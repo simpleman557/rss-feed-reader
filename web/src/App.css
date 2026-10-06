@@ -76,7 +76,6 @@
 }
 
 .edit-category-btn,
-.add-feed-btn,
 .edit-feed-btn {
   flex-shrink: 0;
   border: none;
@@ -87,8 +86,7 @@
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.edit-category-btn,
-.add-feed-btn {
+.edit-category-btn {
   padding: 4px 6px;
   font-size: 0.85rem;
 }
@@ -100,7 +98,6 @@
 
 @media (hover: hover) {
   .edit-category-btn:hover,
-  .add-feed-btn:hover,
   .edit-feed-btn:hover {
     background: var(--border);
   }
@@ -112,15 +109,12 @@
    unselected rows stay clean. */
 @media (hover: hover) {
   .edit-category-btn,
-  .add-feed-btn,
-  .edit-feed-btn {
+    .edit-feed-btn {
     opacity: 0;
   }
 
   .category-header:hover .edit-category-btn,
-  .category-header:hover .add-feed-btn,
-  .edit-category-btn:focus-visible,
-  .add-feed-btn:focus-visible,
+  .category-header:hover   .edit-category-btn:focus-visible,
   .feed-row:hover .edit-feed-btn,
   .edit-feed-btn:focus-visible {
     opacity: 1;
@@ -129,21 +123,18 @@
 
 /* Comfortable tap targets on touch devices (Apple HIG ~44pt). */
 @media (hover: none) {
-  .add-feed-btn,
-  .edit-category-btn,
+    .edit-category-btn,
   .edit-feed-btn {
     display: none;
   }
 
-  .category-header.active .add-feed-btn,
-  .category-header.active .edit-category-btn,
+  .category-header.active   .category-header.active .edit-category-btn,
   .feed-row.active .edit-feed-btn {
     display: block;
   }
 
   .edit-category-btn,
-  .add-feed-btn,
-  .edit-feed-btn {
+    .edit-feed-btn {
     min-width: 40px;
     min-height: 40px;
   }
@@ -155,8 +146,7 @@
 }
 
 .edit-category-form,
-.edit-feed-form,
-.add-feed-inline-form {
+.edit-feed-form {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -164,8 +154,7 @@
 }
 
 .edit-category-form input,
-.edit-feed-form input,
-.add-feed-inline-form input {
+.edit-feed-form input {
   padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -188,8 +177,7 @@
 }
 
 .edit-category-form button,
-.edit-feed-form button,
-.add-feed-inline-form button {
+.edit-feed-form button {
   padding: 5px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -284,45 +272,8 @@
   outline-offset: -2px;
 }
 
-.add-category-form {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-
-.add-category-form input {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: var(--surface);
-  color: var(--text);
-}
-
-.add-category-form button,
-.new-category-btn {
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.15s ease;
-}
-
-@media (hover: hover) {
-  .add-category-form button:hover,
-  .new-category-btn:hover {
-    background: var(--bg-subtle);
-  }
-}
-
 /* --- Sidebar bottom "Customization" section: a labeled, rounded card grouping
-   Export OPML and the appearance control together, distinct from "+ Add Category"
-   which stays a standalone button above it. --- */
+   Add category / Add feed, Import / Export OPML, and the appearance control. --- */
 
 .sidebar-section {
   display: flex;
@@ -435,6 +386,62 @@
 
 .sidebar-card-half + .sidebar-card-half {
   border-left: 1px solid var(--border);
+}
+
+/* Add category / Add feed forms open inside the card, under the buttons row. */
+.customize-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.customize-form + .sidebar-card-row {
+  border-top: 1px solid var(--border);
+}
+
+.customize-form label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.customize-form input,
+.customize-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.customize-form-note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.customize-form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.customize-form-actions button {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  cursor: pointer;
 }
 
 /* Appearance segmented control (System / Light / Dark). Sits inside a card row above,
@@ -904,12 +911,10 @@
 
   .sidebar-item,
   .feed-item,
-  .new-category-btn,
-  .add-category-form button,
   .edit-category-form button,
   .edit-feed-form button,
-  .add-feed-inline-form button,
   .sidebar-card-half,
+  .customize-form-actions button,
   .sidebar-card-row,
   .theme-option,
   .today-group-header,
@@ -926,8 +931,7 @@
      between the two small glyphs. Narrower, with the full 44px height kept, and slightly
      larger glyphs so the pair reads as one group. */
   .edit-category-btn,
-  .add-feed-btn,
-  .edit-feed-btn {
+    .edit-feed-btn {
     min-width: 36px;
     min-height: 44px;
     font-size: 1rem;
