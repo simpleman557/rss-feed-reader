@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { dominantFeedImageUrl } from "../src/feedWideImage.js";
 
 describe("dominantFeedImageUrl", () => {
-  it("flags a single image repeated across the whole feed (the Slashdot case)", () => {
-    const logo = "https://a.fsdn.com/sd/twitter_icon_large.png";
+  it("flags a single image repeated across the whole feed (the repeated-logo case)", () => {
+    const logo = "https://cdn.example.com/social-card.png";
     const urls = Array.from({ length: 95 }, () => logo);
     assert.equal(dominantFeedImageUrl(urls), logo);
   });
@@ -15,7 +15,7 @@ describe("dominantFeedImageUrl", () => {
   });
 
   it("leaves a feed alone when its most-repeated image is only a small minority", () => {
-    // Mirrors a real feed (BBC repeated one image across ~2% of items): a handful of
+    // Mirrors a real feed (one real feed repeated one image across ~2% of items): a handful of
     // shared images among many distinct ones is not a feed-wide logo.
     const urls = Array.from({ length: 100 }, (_, i) => `https://cdn.example.com/img-${i}.jpg`);
     for (let i = 0; i < 5; i++) urls[i] = "https://cdn.example.com/shared.jpg";

@@ -19,15 +19,15 @@ describe("importOpml", () => {
     const { api } = setup();
     const result = api.importOpml([
       folder("Tech", [feed("Ars", "https://ars.example/feed")]),
-      folder("News", [feed("BBC", "https://bbc.example/feed"), feed("NPR", "https://npr.example/feed")]),
+      folder("News", [feed("Feed One", "https://one.example/feed"), feed("Feed Two", "https://two.example/feed")]),
     ]);
     assert.deepEqual(result, { feedsAdded: 3, categoriesCreated: 2, duplicates: 0, invalid: [] });
     assert.deepEqual(api.getCategories().map((c) => c.name), ["News", "Tech"]);
     const feeds = api.getFeeds();
     assert.deepEqual(feeds.map((f) => [f.title, catName(api, f.categoryId)]).sort(), [
       ["Ars", "Tech"],
-      ["BBC", "News"],
-      ["NPR", "News"],
+      ["Feed One", "News"],
+      ["Feed Two", "News"],
     ]);
   });
 

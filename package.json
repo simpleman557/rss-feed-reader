@@ -1,8 +1,19 @@
 {
   "name": "feed-reader",
+  "version": "1.0.0",
+  "description": "A self-hosted, minimal RSS/Atom reader with categories, read-later and a 30-day retention window.",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/simpleman557/rss-feed-reader.git"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "npm run build --prefix web",
-    "start": "npm run build --prefix web && npm start --prefix server"
+    "start": "npm run build --prefix web && npm start --prefix server",
+    "test": "npm test --prefix server",
+    "lint": "npm run lint --prefix web"
   }
 }

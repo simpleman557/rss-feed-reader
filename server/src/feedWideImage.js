@@ -1,8 +1,8 @@
 // A per-article image field is only useful when it's actually per-article. Some feeds
 // embed the same site logo or social-card image in every entry's HTML, and the img-scan
-// in feedParser.js dutifully picks it up as each item's "image" — Slashdot's feed, for
-// instance, opens every item's description with the identical
-// https://a.fsdn.com/sd/twitter_icon_large.png. Treated as an article image that then
+// in feedParser.js dutifully picks it up as each item's "image" — one real feed, for
+// instance, opened every item's description with the identical
+// social-card PNG. Treated as an article image that then
 // renders cropped (object-fit: cover) on every single row, it both looks wrong and hides
 // the feed's own clean icon, which is the far better thing to show when there's no real
 // article picture.
@@ -11,8 +11,8 @@
 // dominates the feed. It returns the offending URL (so callers can drop it and fall back
 // to the feed icon) or null when the images look genuinely per-article — which is the
 // overwhelming norm. Measured across the subscribed feeds, real feeds repeat almost
-// nothing (BBC's most-repeated image covered 7 of 343 items, ~2%), while Slashdot's
-// covered all 95, so the two are separated by a wide margin and the threshold below sits
+// nothing (the most-repeated image in one real feed covered 7 of 343 items, ~2%), while the
+// offending feed's covered all 95, so the two are separated by a wide margin and the threshold below sits
 // comfortably between them.
 export function dominantFeedImageUrl(imageUrls, { minItems = 5, minShare = 0.7 } = {}) {
   const present = imageUrls.filter(Boolean);

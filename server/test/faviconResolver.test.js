@@ -121,7 +121,7 @@ describe("discoverFeedIcon", () => {
   });
 
   it("rejects a candidate that redirects back down to plain HTTP", async () => {
-    // Simulates the BBC Sport failure mode: the HTTPS-upgraded request actually lands
+    // Simulates the HTTP-downgrade failure mode: the HTTPS-upgraded request actually lands
     // back on an http:// URL after following a redirect.
     mockHomepageAndIcon(`<link rel="icon" href="/favicon.png">`, () =>
       fakeResponse({ url: "http://example.com/favicon.png" })

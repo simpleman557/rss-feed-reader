@@ -64,7 +64,7 @@ function firstImgSrc(html) {
   return null;
 }
 
-// Some feeds (BBC's included) reuse the same guid for a live-updated article but
+// Some feeds reuse the same guid for a live-updated article but
 // append an incrementing revision fragment each time it's edited (e.g. "...c78y2e#0",
 // then "...c78y2e#8") — the story is the same, the link is identical, only this
 // fragment changes. Since our article identity is keyed on guid, an unstripped
@@ -95,19 +95,19 @@ function isImageMediaContent(entry) {
 
 // Publishers embed a per-article image in wildly different ways — there's no single
 // standard. Tried in order, most-explicit-signal first:
-//   1. media:thumbnail — an explicit "this is the thumbnail" tag (e.g. BBC)
+//   1. media:thumbnail — an explicit "this is the thumbnail" tag (common in news-site feeds)
 //   2. media:content — only when it's actually an image, so a video/audio entry doesn't
 //      get mistaken for a picture: either declared as one (medium="image" or an image/*
-//      type, e.g. NYT) or, when it declares nothing at all (e.g. The Athletic), when its
+//      type) or, when it declares nothing at all, when its
 //      URL ends in an image file extension
 //   3. itunes:image — per-item podcast art (rss-parser decorates this automatically
 //      whenever the feed declares the itunes namespace)
 //   4. enclosure — only when its type is actually image/*, so a podcast's audio
 //      enclosure isn't misread as an image
-//   5/6. the first <img> found in the full HTML content (content:encoded, e.g. NPR,
-//      or plain description, e.g. The Verge) — many feeds only ever embed the image
+//   5/6. the first <img> found in the full HTML content (content:encoded,
+//      or plain description) — many feeds only ever embed the image
 //      inline in the article body HTML, with no dedicated image field at all
-// Some feeds (e.g. TechCrunch) simply don't include image data in any of these forms —
+// Some feeds simply don't include image data in any of these forms —
 // the image only exists as an Open Graph tag on the live webpage, which would require
 // fetching and scraping every article's HTML on every refresh. That's a much heavier,
 // slower, more fragile operation than parsing the feed itself, so it's out of scope
@@ -131,8 +131,8 @@ export function itemImageUrl(item) {
   return firstImgSrc(item.contentEncoded) || firstImgSrc(item.content);
 }
 
-// A non-browser User-Agent — a browser-like UA triggers WAF challenges (e.g.
-// ESPN's AWS WAF returns a 202 with an empty body expecting a JS challenge).
+// A non-browser User-Agent — a browser-like UA triggers WAF challenges (some
+// sites' AWS WAF returns a 202 with an empty body expecting a JS challenge).
 // We also fetch the XML ourselves rather than letting rss-parser do it (it uses
 // Node's older http/https module internally, which some sites block).
 const FEED_FETCH_USER_AGENT = "FeedReader/1.0";
@@ -175,7 +175,7 @@ export async function fetchAndParseFeed(url) {
     throw new Error(`HTTP ${res.status} — the feed returned an unexpected response`);
   }
   if (res.headers.get("x-amzn-waf-action") === "challenge") {
-    // ESPN challenges requests from cloud hosts (e.g. Cloud Run); its news API doesn't.
+    // Some sites challenge requests from cloud hosts (e.g. Cloud Run) while their public news API doesn't (see espnNews.js).
     const espnApiUrl = espnNewsApiUrl(url);
     if (espnApiUrl) {
       return fetchEspnNews(espnApiUrl, {

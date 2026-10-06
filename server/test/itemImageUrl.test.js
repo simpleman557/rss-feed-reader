@@ -16,7 +16,7 @@ describe("itemImageUrl media:content", () => {
     );
   });
 
-  it("uses an undeclared entry whose URL is an image file (The Athletic)", () => {
+  it("uses an undeclared entry whose URL is an image file (declares neither medium nor type)", () => {
     const url = "https://static01.nyt.com/athletic/uploads/wp/2026/09/27/GettyImages-1-scaled.jpg";
     assert.equal(itemImageUrl(mediaContent({ url })), url);
     assert.equal(itemImageUrl(mediaContent({ url: `${url}?w=1440` })), `${url}?w=1440`);

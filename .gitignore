@@ -1,7 +1,18 @@
 node_modules/
 .DS_Store
+.env
+.env.*
+!.env.example
+*.log
+
+# Local database files (the app stores its data outside the repo by default)
 server/data/*.db
 server/data/*.db-journal
 server/data/*.db-wal
 server/data/*.db-shm
+
+# Holds an OAuth client secret when configuring IAP (see docs/DEPLOY.md)
 iap_settings.yaml
+
+# Local editor / tool config
+.claude/

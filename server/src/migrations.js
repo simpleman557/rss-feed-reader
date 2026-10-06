@@ -91,7 +91,7 @@ export const MIGRATIONS = [
     name: "dedupe fragment-suffixed article ids",
     run(db) {
       // Before feedParser.js stripped revision fragments from guids, some feeds (e.g.
-      // BBC's) reused the same guid for a live-updated article but appended an
+      // some news sites) reused the same guid for a live-updated article but appended an
       // incrementing "#0", "#8", etc. each time it was edited — each edit could insert
       // a duplicate row differing only by that fragment. Merges every such group down
       // to one row per de-fragmented id: read/saved are OR'd together so nothing
@@ -178,7 +178,7 @@ export const MIGRATIONS = [
     run(db) {
       // Older rows were stored before feedParser.js learned to reject an image repeated
       // across a whole feed (see feedWideImage.js). Those rows are never rewritten on
-      // refresh (upsert is INSERT OR IGNORE), so a feed like Slashdot — which stamps the
+      // refresh (upsert is INSERT OR IGNORE), so a feed that stamps the
       // same social logo into every entry — would keep showing that cropped logo on every
       // article indefinitely. Re-run the same detection over the existing data, per feed,
       // and null out the offending image so those articles fall back to the clean feed

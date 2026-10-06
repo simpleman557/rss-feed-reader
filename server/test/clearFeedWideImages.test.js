@@ -19,7 +19,7 @@ function setupFeed() {
 describe("clear feed-wide duplicate article images", () => {
   it("nulls a logo repeated across every article, preserving read/saved state", () => {
     const { db, feedId } = setupFeed();
-    const logo = "https://a.fsdn.com/sd/twitter_icon_large.png";
+    const logo = "https://cdn.example.com/social-card.png";
     const ids = [];
     for (let i = 0; i < 10; i++) {
       ids.push(
@@ -71,7 +71,7 @@ describe("clear feed-wide duplicate article images", () => {
 
   it("is idempotent — a second run changes nothing", () => {
     const { db, feedId } = setupFeed();
-    const logo = "https://a.fsdn.com/sd/twitter_icon_large.png";
+    const logo = "https://cdn.example.com/social-card.png";
     for (let i = 0; i < 8; i++) seedArticle(db, feedId, { imageUrl: logo });
 
     clearMigration.run(db);
