@@ -30,7 +30,7 @@ A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third
 
 - **Backend**: Node.js 22+, Express, SQLite (`better-sqlite3`), `rss-parser`
 - **Frontend**: React 19, Vite
-- **Tests**: Node's built-in test runner (backend)
+- **Tests**: Node's built-in test runner (backend), Playwright (frontend, end to end)
 - **Deployment**: Docker, optionally Google Cloud Run
 
 ## Quick start
@@ -64,7 +64,10 @@ The backend has no hot-reload; restart it after changing anything under `server/
 ```bash
 cd server && npm test      # backend tests
 cd web && npm run lint     # frontend lint
+cd web && npm run test:e2e # frontend end-to-end tests (see below)
 ```
+
+The end-to-end tests drive a real Chromium against the built app, on a desktop (mouse) profile and a phone (touch) profile, using a throwaway database they seed themselves; they never touch your real data or the network. First time only, install the browser: `cd web && npx playwright install chromium`.
 
 ## Configuration
 
@@ -107,7 +110,7 @@ Things that differ from running locally:
 
 ## Notes
 
-- Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see [docs/SPEC.md](docs/SPEC.md)'s Testing section for what each file covers. The frontend doesn't have automated tests yet.
+- Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see [docs/SPEC.md](docs/SPEC.md)'s Testing section for what each file covers. The frontend has end-to-end tests (Playwright) covering the sidebar, the phone drawer, hover vs. touch behavior, the Customization card, and list rendering — see the same section.
 - A refresh occasionally takes a little longer than usual for a given feed — that's the app periodically (about once a month, per feed) re-checking the site's real icon in case it's changed, not a hang or a bug.
 - Marking an article read (or un-saving it from Read Later) greys it out immediately but leaves it in place for as long as you keep looking at that same screen — giving you a moment to reconsider before it's gone. It actually disappears once you either hit Refresh (or reload the page), or navigate to a different category/feed/destination and come back. Reloading the page also restores whichever destination/category/feed you were on, unless you close the tab entirely — that resets to the default view (Today).
 
