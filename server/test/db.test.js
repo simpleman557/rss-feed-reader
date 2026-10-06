@@ -144,18 +144,18 @@ describe("renameFeed", () => {
   it("rejects a name that collides with another feed in the same category", () => {
     const { testDb, api } = setup();
     const categoryId = seedCategory(testDb);
-    seedFeed(testDb, categoryId, { url: "https://example.com/a.xml", title: "BBC" });
+    seedFeed(testDb, categoryId, { url: "https://example.com/a.xml", title: "Example Feed" });
     const feedId = seedFeed(testDb, categoryId, { url: "https://example.com/b.xml", title: "CNN" });
-    assert.throws(() => api.renameFeed(feedId, "BBC"), /already exists in this category/i);
+    assert.throws(() => api.renameFeed(feedId, "Example Feed"), /already exists in this category/i);
   });
 
   it("allows the same title in a different category", () => {
     const { testDb, api } = setup();
     const categoryA = seedCategory(testDb, "A");
     const categoryB = seedCategory(testDb, "B");
-    seedFeed(testDb, categoryA, { url: "https://example.com/a.xml", title: "BBC" });
+    seedFeed(testDb, categoryA, { url: "https://example.com/a.xml", title: "Example Feed" });
     const feedId = seedFeed(testDb, categoryB, { url: "https://example.com/b.xml", title: "CNN" });
-    assert.doesNotThrow(() => api.renameFeed(feedId, "BBC"));
+    assert.doesNotThrow(() => api.renameFeed(feedId, "Example Feed"));
   });
 });
 
@@ -192,14 +192,14 @@ describe("syncFeedMetadata", () => {
   it("disambiguates the first-sync title if it collides with a sibling in the same category", () => {
     const { testDb, api } = setup();
     const categoryId = seedCategory(testDb);
-    seedFeed(testDb, categoryId, { url: "https://example.com/a.xml", title: "BBC" });
+    seedFeed(testDb, categoryId, { url: "https://example.com/a.xml", title: "Example Feed" });
     const feedId = seedFeed(testDb, categoryId, {
       url: "https://example.com/b.xml",
       title: "https://example.com/b.xml",
     });
-    api.syncFeedMetadata(feedId, "BBC", null, null);
+    api.syncFeedMetadata(feedId, "Example Feed", null, null);
     const synced = api.getFeeds().find((f) => f.id === feedId);
-    assert.equal(synced.title, "BBC (2)");
+    assert.equal(synced.title, "Example Feed (2)");
   });
 
   it("never overwrites a title that's already real, on later syncs", () => {
@@ -249,8 +249,8 @@ describe("clearArticleImagesForFeed", () => {
     const { testDb, api } = setup();
     const categoryId = seedCategory(testDb);
     const feedId = seedFeed(testDb, categoryId);
-    const withImg = seedArticle(testDb, feedId, { imageUrl: "https://a.fsdn.com/sd/topics/ai_64.png" });
-    const alsoImg = seedArticle(testDb, feedId, { imageUrl: "https://a.fsdn.com/sd/topics/space_64.png" });
+    const withImg = seedArticle(testDb, feedId, { imageUrl: "https://cdn.example.com/topics/ai_64.png" });
+    const alsoImg = seedArticle(testDb, feedId, { imageUrl: "https://cdn.example.com/topics/space_64.png" });
     const noImg = seedArticle(testDb, feedId, { imageUrl: null });
 
     const changed = api.clearArticleImagesForFeed(feedId);

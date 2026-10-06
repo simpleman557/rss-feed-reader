@@ -1,20 +1,20 @@
 // Discovers a feed's real site icon instead of guessing one. Three ways a guess breaks
-// (all hit in practice, see SPEC.md's history — NYT, ProPublica, Engadget, BBC Sport):
+// (all hit in practice, see docs/SPEC.md's design decisions):
 //   1. A naive `{origin}/favicon.ico` path is a legacy convention; many current sites
 //      don't serve anything there and instead redirect to the homepage, which isn't an
 //      image at all.
 //   2. A site's own favicon.ico/apple-touch-icon.png can exist but be an abandoned,
-//      near-empty placeholder (ProPublica's was a literal 1x1px stub).
+//      near-empty placeholder (one real site's was a literal 1x1px stub).
 //   3. Even a real, valid asset can be unusable — an ultra-wide wordmark banner (built
 //      for old desktop feed-reader headers) is illegible shrunk into a small square icon,
 //      and an HTTP-only asset on a legacy subdomain gets silently blocked by browsers
-//      that enforce HTTPS (BBC Sport's case).
+//      that enforce HTTPS (a real-world case).
 //
 // The fix mirrors what a real browser does: read the site's own <link rel="icon">
 // declarations rather than guessing a path, prefer the largest apple-touch-icon (almost
 // always a proper square mark, unlike a tiny favicon), and validate whatever's found
 // before trusting it — reject anything that isn't a real image, is suspiciously small
-// (catches stub placeholders), or only works over plain HTTP (catches the BBC Sport
+// (catches stub placeholders), or only works over plain HTTP (catches the HTTP-downgrade
 // failure mode) before it ever reaches the database.
 import { safeFetch, readTextCapped, readArrayBufferCapped } from "./safeFetch.js";
 
@@ -100,7 +100,7 @@ async function confirmIconUsable(url) {
   try {
     const httpsUrl = url.replace(/^http:\/\//i, "https://");
     const res = await fetchWithUA(httpsUrl);
-    // Rejects a same-origin bounce back down to http:// (the BBC Sport failure mode) —
+    // Rejects a same-origin bounce back down to http:// (the HTTP-downgrade failure mode) —
     // res.url is the final URL after following redirects.
     if (!res.ok || !res.url.startsWith("https://")) return null;
     const contentType = res.headers.get("content-type") || "";

@@ -116,22 +116,22 @@ describe("normalizeFeedUrl", () => {
 });
 
 describe("uniqueTitleInBucket", () => {
-  const bucket = [{ title: "BBC" }, { title: "BBC (2)" }];
+  const bucket = [{ title: "Example Feed" }, { title: "Example Feed (2)" }];
 
   it("returns the title unchanged when there's no collision", () => {
-    assert.equal(uniqueTitleInBucket(bucket, "The Verge"), "The Verge");
+    assert.equal(uniqueTitleInBucket(bucket, "Another Feed"), "Another Feed");
   });
 
   it("appends ' (2)' on a first collision", () => {
-    assert.equal(uniqueTitleInBucket([{ title: "BBC" }], "BBC"), "BBC (2)");
+    assert.equal(uniqueTitleInBucket([{ title: "Example Feed" }], "Example Feed"), "Example Feed (2)");
   });
 
   it("counts up past already-taken suffixes", () => {
-    assert.equal(uniqueTitleInBucket(bucket, "BBC"), "BBC (3)");
+    assert.equal(uniqueTitleInBucket(bucket, "Example Feed"), "Example Feed (3)");
   });
 
   it("detects a collision case-insensitively", () => {
-    assert.equal(uniqueTitleInBucket([{ title: "bbc" }], "BBC"), "BBC (2)");
+    assert.equal(uniqueTitleInBucket([{ title: "example feed" }], "Example Feed"), "Example Feed (2)");
   });
 });
 

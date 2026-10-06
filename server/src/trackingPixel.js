@@ -1,5 +1,5 @@
-// Many feeds open every item's HTML with a 1x1 tracking/telemetry pixel (NPR's is
-// .../tracking/npr-rss-pixel.png?story=...). It's a real, loadable image, so it can't be
+// Many feeds open every item's HTML with a 1x1 tracking/telemetry pixel (e.g.
+// .../tracking/some-rss-pixel.png?story=...). It's a real, loadable image, so it can't be
 // caught as a broken <img src> in the browser — it just renders as a blank box where a
 // thumbnail should be — and it carries a per-article id in its query, so the feed-wide
 // image detection (feedWideImage.js) can't spot it either. Matching it by URL is the only

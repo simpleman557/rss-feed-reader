@@ -1,73 +1,116 @@
 # Feed Reader
 
-A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third-party services — just an RSS/Atom reader you run yourself (on your own machine, or privately on Google Cloud Run), with subscriptions organized into categories, a 30-day read/unread retention window, and a "read later" queue.
+A self-hosted, minimal alternative to Feedly. No accounts, no tracking, no third-party services: just an RSS/Atom reader you run yourself, on your own machine or privately on Google Cloud Run.
+
+![Feed Reader showing a category's unread articles](docs/screenshots/tech-articles.png)
 
 ## Features
 
-- Subscribe to RSS/Atom feeds and organize them into categories (drag a feed onto a category to move it — every feed always belongs to one, so there's no "Uncategorized" pile to lose track of)
-- Today (a per-category digest of what's new), Read Later, and Read Articles as sidebar destinations, plus a plain unread list for any category or feed you select — all sortable newest- or oldest-first, and grouped by date ("Today", then calendar dates)
-- Unread and saved counts next to All Feeds, Today, and Read Later in the sidebar
-- Each feed's real site icon shown next to its articles and in the sidebar — discovered from the site itself (not a guessed favicon path or the feed's own often-unreliable declared image) and validated before use, so it's the actual logo rather than a broken image or an illegible wordmark banner
-- Search across all articles by title or description — type in the search bar (top-left of the top bar) to filter results in real time across all feeds, including already-read ones; Escape or the native × button resets it
-- Auto-refreshes every 15 minutes (paused while the tab is hidden, to avoid wasted fetches)
-- A dense, focused interface (flush rows with no cards or shadows, monospaced counts/timestamps, one accent color) with light/dark appearance, following your system by default — override it with the System / Light / Dark control at the bottom of the sidebar
-- Import subscriptions from an OPML file, and export them back out — so moving from (or to) another reader is a file away. Import keeps your folders and feed names, skips feeds you already have, and reports anything it couldn't import
-- All data — subscriptions, categories, read/saved state — lives in a SQLite database file owned by the server, not the browser, so it survives clearing browser data and isn't tied to one browser profile. The file itself lives outside the app's install/code directory too (in your OS's normal per-app data location, e.g. `~/Library/Application Support/Feed Reader` on macOS), so updating or reinstalling the code never touches it
+- **Categories**: organize subscriptions into categories (drag a feed onto a category to move it). Every feed always belongs to one.
+- **Today, Read Later and Read Articles** as sidebar destinations, plus an unread list for any category or feed. Sort newest or oldest first; lists are grouped by date.
+- **Search** across all articles by title or description, live as you type, including already-read ones.
+- **Real site icons** next to every feed and article, discovered from the site itself and validated, so you get the actual logo instead of a broken image.
+- **Light and dark** appearance, following your system by default, with a System / Light / Dark override.
+- **Phone-friendly**: a slide-out drawer, touch-sized targets and compact rows.
+- **OPML import and export**, so moving to or from another reader is a file away.
+- **Your data stays yours**: subscriptions, categories and read/saved state live in a SQLite file owned by the server, outside the code directory, so reinstalling or updating never touches it. Articles are kept for a 30-day retention window (saved ones are kept indefinitely).
+- **Auto-refresh** every 15 minutes while the tab is open.
 
-## Architecture
+### Screenshots
 
-- **`server/`** — Node/Express backend. Fetches and parses RSS/Atom feeds (working around the browser's CORS restrictions), discovers and validates each feed's real site icon, owns all persistent data in a SQLite file kept outside the project directory (see SPEC.md's Data Directory section) with schema changes tracked by a small built-in migration system, and can serve the built frontend directly so the whole app runs as one process.
-- **`web/`** — Vite + React frontend. Talks to the backend over a small REST API and holds no data of its own.
+| Search | Add a feed |
+|---|---|
+| ![Search results](docs/screenshots/search.png) | ![Adding a feed](docs/screenshots/add-feed.png) |
 
-See [SPEC.md](SPEC.md) for the full design and behavior spec, including the data model, retention rules, and known gaps.
+| Dark mode | Mobile | Mobile menu |
+|---|---|---|
+| ![Dark mode](docs/screenshots/tech-articles-dark.png) | ![Mobile article list](docs/screenshots/mobile-articles.png) | ![Mobile menu drawer](docs/screenshots/mobile-menu.png) |
 
-## Running it
+## Tech stack
 
-Requires [Node.js](https://nodejs.org/). First time only, install dependencies in both halves:
+- **Backend**: Node.js 22+, Express, SQLite (`better-sqlite3`), `rss-parser`
+- **Frontend**: React 19, Vite
+- **Tests**: Node's built-in test runner (backend)
+- **Deployment**: Docker, optionally Google Cloud Run
+
+## Quick start
+
+Requires [Node.js](https://nodejs.org/) 22 or newer.
 
 ```bash
+git clone <this-repo-url>
+cd rss-feed-reader
 cd server && npm install
 cd ../web && npm install
-```
-
-**Day to day**, just double-click **`Feed Reader.command`** in the repo root — it starts the app and opens it in your default browser automatically once it's ready. Leave that window open while you're using the app; closing it (or Ctrl+C) stops the server. Running it again while it's already up just reopens the browser instead of starting a second copy.
-
-Prefer the command line? The launcher is just a thin wrapper around:
-
-```bash
+cd ..
 npm start   # builds the frontend, then serves everything on http://localhost:3001
 ```
 
-run from the repo root. This builds `web/` into static files and has the backend serve them alongside the API, so there's only one process/port to deal with. Open **http://localhost:3001** in your browser (Firefox is the primary target; other browsers should work too).
+Open **http://localhost:3001**. On macOS you can also double-click **`Feed Reader.command`** in the repo root. It starts the app and opens your browser, and closing its window stops the server.
 
-**While actively developing the frontend**, run the two dev servers separately instead, so frontend edits hot-reload instantly instead of requiring a rebuild:
+### Development
 
-```bash
-cd server && npm start     # backend — http://localhost:3001
-cd web && npm run dev      # frontend, hot-reloading — http://localhost:5173
-```
-
-Open **http://localhost:5173** in this mode — its dev server proxies `/api/*` requests to the backend. Either way, the backend itself has no hot-reload: after changing anything under `server/src/`, stop it (`Ctrl+C`) and start it again to pick up the change.
-
-**Running the backend tests**:
+Run the two dev servers separately so frontend edits hot-reload:
 
 ```bash
-cd server && npm test
+cd server && npm start     # backend: http://localhost:3001
+cd web && npm run dev      # frontend: http://localhost:5173 (proxies /api to the backend)
 ```
+
+The backend has no hot-reload; restart it after changing anything under `server/src/`.
+
+### Tests and lint
+
+```bash
+cd server && npm test      # backend tests
+cd web && npm run lint     # frontend lint
+```
+
+## Configuration
+
+All settings are optional environment variables.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PORT` | `3001` | Port to listen on |
+| `HOST` | `127.0.0.1` | Interface to bind to. Keep the default unless you've put the app behind authentication. |
+| `FEED_READER_DATA_DIR` | OS per-app data folder (e.g. `~/Library/Application Support/Feed Reader` on macOS) | Where the SQLite database lives |
+| `SQLITE_JOURNAL_MODE` | `WAL` | Use `DELETE` on network or FUSE filesystems |
+| `ALLOWED_HOSTS` | loopback only | Comma-separated hostnames allowed in the `Host` header, or `*` |
+
+The app has no login of its own. Don't expose it to a network you don't trust without putting authentication in front of it.
+
+## Project structure
+
+```
+server/        Express API, feed fetching/parsing, SQLite, migrations, tests
+web/           React + Vite frontend
+docs/          Design spec, deployment guide, screenshots
+Dockerfile     Single image: API + built frontend
+```
+
+## Documentation
+
+- [docs/SPEC.md](docs/SPEC.md): full design and behavior spec (data model, retention rules, design decisions, known gaps)
+- [docs/DEPLOY.md](docs/DEPLOY.md): deploying to Google Cloud Run behind Identity-Aware Proxy
 
 ## Deploying to Cloud Run
 
-The app can also run as a private Google Cloud Run service, reachable from your phone or any browser. It's a single instance with the SQLite database on a mounted Cloud Storage bucket. Identity-Aware Proxy (IAP) puts Google sign-in in front of it, since the app has no login of its own. The repo's `Dockerfile` builds the image, and [DEPLOY.md](DEPLOY.md) has the step-by-step commands, the environment variables, and troubleshooting.
+The app can also run as a private Cloud Run service, reachable from your phone or any browser. It's a single instance with the SQLite database on a mounted Cloud Storage bucket, and Identity-Aware Proxy puts Google sign-in in front of it. The `Dockerfile` builds the image; [docs/DEPLOY.md](docs/DEPLOY.md) has the step-by-step commands, environment variables and troubleshooting.
 
 Things that differ from running locally:
 
 - **Never deploy without IAP** (or at minimum `--no-allow-unauthenticated`). Anyone who can reach the app can read and change everything.
-- **Personal Gmail accounts need a custom OAuth client for IAP.** The default one only admits members of a Google Workspace/Cloud Identity organization, so you'd get "You don't have access" after signing in. DEPLOY.md covers the fix.
-- **Some sites block requests from cloud servers.** ESPN's league feeds (NBA, NFL, MLB, NHL, WNBA, college basketball and football) are read from ESPN's own news API when that happens, so they keep working. Other sites that do this show "Blocked by bot protection".
+- **Personal Gmail accounts need a custom OAuth client for IAP.** The default one only admits members of a Google Workspace/Cloud Identity organization, so you'd see "You don't have access" after signing in. DEPLOY.md covers the fix.
+- **Some sites block requests from cloud servers.** One site-specific fallback exists (see `server/src/espnNews.js`); other affected sites show "Blocked by bot protection".
 - **Feeds refresh only while the app is open in a browser tab**, same as locally.
 
 ## Notes
 
-- Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see SPEC.md's Testing section for what each file covers. The frontend doesn't have automated tests yet.
+- Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see [docs/SPEC.md](docs/SPEC.md)'s Testing section for what each file covers. The frontend doesn't have automated tests yet.
 - A refresh occasionally takes a little longer than usual for a given feed — that's the app periodically (about once a month, per feed) re-checking the site's real icon in case it's changed, not a hang or a bug.
 - Marking an article read (or un-saving it from Read Later) greys it out immediately but leaves it in place for as long as you keep looking at that same screen — giving you a moment to reconsider before it's gone. It actually disappears once you either hit Refresh (or reload the page), or navigate to a different category/feed/destination and come back. Reloading the page also restores whichever destination/category/feed you were on, unless you close the tab entirely — that resets to the default view (Today).
+
+## License
+
+[MIT](LICENSE)

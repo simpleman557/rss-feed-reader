@@ -16,7 +16,7 @@ describe("clear tracking-pixel article images", () => {
   it("nulls a stored tracking pixel, preserving read/saved state", () => {
     const { db, feedId } = setupFeed();
     const id = seedArticle(db, feedId, {
-      imageUrl: "https://media.npr.org/include/images/tracking/npr-rss-pixel.png?story=nx-s1-5980066",
+      imageUrl: "https://media.example.org/include/images/tracking/site-rss-pixel.png?story=abc123",
       read: 1,
       saved: 1,
     });
@@ -31,12 +31,12 @@ describe("clear tracking-pixel article images", () => {
 
   it("leaves genuine article images untouched", () => {
     const { db, feedId } = setupFeed();
-    const keep = seedArticle(db, feedId, { imageUrl: "https://ichef.bbci.co.uk/images/ic/240x135/p0l7jnbt.jpg" });
+    const keep = seedArticle(db, feedId, { imageUrl: "https://img.example.co.uk/images/ic/240x135/p0l7jnbt.jpg" });
     const nullId = seedArticle(db, feedId, { imageUrl: null });
 
     clearMigration.run(db);
 
-    assert.equal(getArticle(db, keep).imageUrl, "https://ichef.bbci.co.uk/images/ic/240x135/p0l7jnbt.jpg");
+    assert.equal(getArticle(db, keep).imageUrl, "https://img.example.co.uk/images/ic/240x135/p0l7jnbt.jpg");
     assert.equal(getArticle(db, nullId).imageUrl, null);
   });
 
