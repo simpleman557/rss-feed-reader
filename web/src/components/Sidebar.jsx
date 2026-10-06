@@ -147,14 +147,16 @@ export default function Sidebar({
 
     return (
       <li key={f.id}>
-        <div className={`feed-row ${selectedFeedId === f.id ? "active" : ""}`}>
+        <div
+          className={`feed-row ${selectedFeedId === f.id ? "active" : ""}`}
+          onClick={() => onSelectFeed(f.id)}
+        >
           <button
             className={`feed-item ${selectedFeedId === f.id ? "active" : ""}`}
             aria-current={selectedFeedId === f.id ? "true" : undefined}
             title={f.url}
             draggable
             onDragStart={(e) => e.dataTransfer.setData("application/x-feed-id", String(f.id))}
-            onClick={() => onSelectFeed(f.id)}
           >
             <img
               className="feed-icon"
@@ -171,7 +173,15 @@ export default function Sidebar({
             />
             <span className="feed-title-text">{f.title}</span>
           </button>
-          <button className="edit-feed-btn" title="Edit feed" onClick={() => startEditingFeed(f)}>
+          <button
+            className="edit-feed-btn"
+            title="Edit feed"
+            aria-label={`Edit ${f.title}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              startEditingFeed(f);
+            }}
+          >
             ✎
           </button>
         </div>
@@ -351,26 +361,45 @@ export default function Sidebar({
                   </div>
                 </form>
               ) : (
-                <div className={`category-header ${selectedCategoryId === cat.id ? "active" : ""}`}>
-                  {/* One control does both jobs: show this category's articles and
-                      expand/collapse its feeds. */}
+                // The whole row selects the category (the name button's click bubbles up to
+                // it). With a mouse, selecting also expands/collapses — there's no chevron
+                // on desktop. On touch, a tap only selects; the selected row then shows a
+                // pencil and a chevron right after the name, and the chevron is what
+                // expands. The two small buttons stop propagation so they don't also select.
+                <div
+                  className={`category-header ${selectedCategoryId === cat.id ? "active" : ""}`}
+                  onClick={() => {
+                    onSelectCategory(cat.id);
+                    if (window.matchMedia("(hover: hover)").matches) toggleCollapsed(key);
+                  }}
+                >
                   <button
                     className={`sidebar-item ${selectedCategoryId === cat.id ? "active" : ""}`}
                     aria-current={selectedCategoryId === cat.id ? "true" : undefined}
-                    aria-expanded={!collapsed}
-                    onClick={() => {
-                      onSelectCategory(cat.id);
-                      toggleCollapsed(key);
-                    }}
                   >
                     {cat.name}
                   </button>
                   <button
                     className="edit-category-btn"
                     title="Edit category"
-                    onClick={() => startEditingCategory(cat)}
+                    aria-label={`Edit ${cat.name}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      startEditingCategory(cat);
+                    }}
                   >
                     ✎
+                  </button>
+                  <button
+                    className="expand-btn"
+                    aria-label={collapsed ? `Expand ${cat.name}` : `Collapse ${cat.name}`}
+                    aria-expanded={!collapsed}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleCollapsed(key);
+                    }}
+                  >
+                    {collapsed ? "▸" : "▾"}
                   </button>
                 </div>
               )}

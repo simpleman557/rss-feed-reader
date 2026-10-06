@@ -64,79 +64,107 @@
   color: var(--accent);
 }
 
+/* A category row: the whole row is the click target and carries the selected/hover
+   highlight; the name is only as wide as its text so the pencil (and, on touch, the
+   chevron) can sit right after it. */
 .category-header {
   display: flex;
   align-items: center;
-  gap: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
 }
 
-.category-header .sidebar-item {
-  flex: 1;
+.category-header.active {
+  background: var(--selected-bg);
+}
+
+@media (hover: hover) {
+  .category-header:hover {
+    background: var(--selected-bg);
+  }
+}
+
+.category-header .sidebar-item,
+.category-header .sidebar-item:hover,
+.category-header .sidebar-item.active {
+  flex: 0 1 auto;
+  width: auto;
   min-width: 0;
+  padding-right: 4px;
+  background: none;
 }
 
+/* Pencil (edit) and chevron (expand): small, directly after the name. */
 .edit-category-btn,
-.edit-feed-btn {
+.edit-feed-btn,
+.expand-btn {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 30px;
+  padding: 0;
   border: none;
   background: none;
   cursor: pointer;
   color: var(--text-muted);
   border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.edit-category-btn {
-  padding: 4px 6px;
-  font-size: 0.85rem;
-}
-
 .edit-feed-btn {
-  padding: 3px 5px;
   font-size: 0.78rem;
 }
 
 @media (hover: hover) {
   .edit-category-btn:hover,
-  .edit-feed-btn:hover {
+  .edit-feed-btn:hover,
+  .expand-btn:hover {
     background: var(--border);
   }
 }
 
-/* On devices with a real pointer, these secondary controls stay out of the way until
-   the row is hovered/focused. On touch devices (no hover) there's nothing to hover, so
-   they appear on the *selected* category/feed instead: tap a row and its actions show up,
-   unselected rows stay clean. */
+/* Mouse: the pencil stays out of the way until the row is hovered or focused, and there is
+   no chevron — clicking the name expands/collapses. */
 @media (hover: hover) {
+  .expand-btn {
+    display: none;
+  }
+
   .edit-category-btn,
-    .edit-feed-btn {
+  .edit-feed-btn {
     opacity: 0;
   }
 
   .category-header:hover .edit-category-btn,
-  .category-header:hover   .edit-category-btn:focus-visible,
+  .edit-category-btn:focus-visible,
   .feed-row:hover .edit-feed-btn,
   .edit-feed-btn:focus-visible {
     opacity: 1;
   }
 }
 
-/* Comfortable tap targets on touch devices (Apple HIG ~44pt). */
+/* Touch (phone, tablet): no hover, so the selected category shows both pencil and chevron
+   and the selected feed shows its pencil; every other row stays clean. Thumb-sized height,
+   narrow width so the pair sits close together. */
 @media (hover: none) {
-    .edit-category-btn,
-  .edit-feed-btn {
-    display: none;
-  }
-
-  .category-header.active   .category-header.active .edit-category-btn,
-  .feed-row.active .edit-feed-btn {
-    display: block;
-  }
-
   .edit-category-btn,
-    .edit-feed-btn {
-    min-width: 40px;
-    min-height: 40px;
+  .edit-feed-btn,
+  .expand-btn {
+    display: none;
+    width: 22px;
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .category-header.active .edit-category-btn,
+  .category-header.active .expand-btn,
+  .feed-row.active .edit-feed-btn {
+    display: flex;
   }
 }
 
@@ -210,11 +238,17 @@
 .feed-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.feed-row.active {
+  background: var(--selected-bg);
 }
 
 .feed-item {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -223,7 +257,7 @@
   border: none;
   background: none;
   border-radius: 8px;
-  padding: 5px 8px;
+  padding: 5px 4px 5px 8px;
   font-size: 0.85rem;
   color: var(--text-muted);
   cursor: grab;
@@ -257,7 +291,6 @@
 }
 
 .feed-item.active {
-  background: var(--selected-bg);
   color: var(--accent);
 }
 
@@ -331,8 +364,10 @@
   }
 }
 
+/* Rows in the card stack like the appearance control's own row: no hairlines, 6px of
+   padding around, and the next row only adds space below the previous one's padding. */
 .sidebar-card-row + .sidebar-card-row {
-  border-top: 1px solid var(--border);
+  padding-top: 0;
 }
 
 .sidebar-card-row-theme {
@@ -341,30 +376,35 @@
 }
 
 @media (hover: hover) {
-  .sidebar-card-row-theme:hover {
+  .sidebar-card-row-theme:hover,
+  .sidebar-card-row-split:hover {
     background: none;
   }
 }
 
-/* Import/Export OPML share one row, side by side, split by a hairline. Each half reuses
-   .sidebar-card-row's look but must undo the width/padding/hover it'd get from that
-   class alone, since the row itself (not each half) now carries that class. */
+/* Add category / Add feed, and Import / Export OPML, each share a row, styled to match
+   the appearance control below (.theme-option): small rounded segments, a 2px gap, no
+   dividers, and the same soft highlight for the selected one. The row itself carries
+   .sidebar-card-row, so the padding/hover it would get from that class is overridden. */
 .sidebar-card-row-split {
   display: flex;
-  padding: 0;
+  gap: 2px;
+  padding: 6px;
 }
 
 .sidebar-card-half {
   flex: 1;
   min-width: 0;
-  padding: 9px 10px;
+  padding: 5px 4px;
   border: none;
   background: none;
-  color: var(--text);
-  font-size: 0.9rem;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 600;
   text-align: center;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 @media (hover: hover) {
@@ -384,8 +424,12 @@
   }
 }
 
-.sidebar-card-half + .sidebar-card-half {
-  border-left: 1px solid var(--border);
+/* Add category / Add feed stay highlighted while their form is open. Import / Export are
+   one-shot actions and never do. */
+.sidebar-card-half[aria-expanded="true"],
+.sidebar-card-half[aria-expanded="true"]:hover {
+  background: var(--selected-bg);
+  color: var(--accent);
 }
 
 /* Add category / Add feed forms open inside the card, under the buttons row. */
@@ -399,6 +443,7 @@
 }
 
 .customize-form + .sidebar-card-row {
+  padding-top: 6px;
   border-top: 1px solid var(--border);
 }
 
@@ -925,16 +970,6 @@
   .save-btn {
     min-width: 44px;
     min-height: 44px;
-  }
-
-  /* The add/edit pair sits side by side, so a full 44px width each left a ~45px gap
-     between the two small glyphs. Narrower, with the full 44px height kept, and slightly
-     larger glyphs so the pair reads as one group. */
-  .edit-category-btn,
-    .edit-feed-btn {
-    min-width: 36px;
-    min-height: 44px;
-    font-size: 1rem;
   }
 
   .error-banner-toggle {
