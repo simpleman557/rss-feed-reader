@@ -103,7 +103,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 22px;
   height: 30px;
   padding: 0;
   border: none;
@@ -111,7 +111,7 @@
   cursor: pointer;
   color: var(--text-muted);
   border-radius: 6px;
-  font-size: 0.85rem;
+  font-size: 1rem;
   line-height: 1;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
@@ -128,22 +128,22 @@
   }
 }
 
-/* Mouse: the pencil stays out of the way until the row is hovered or focused, and there is
-   no chevron — clicking the name expands/collapses. */
+/* Mouse: the pencil and chevron stay out of the way until the row is hovered or one of
+   them has keyboard focus. Same size and spacing as on touch, where they show on the
+   selected row instead. */
 @media (hover: hover) {
-  .expand-btn {
-    display: none;
-  }
-
   .edit-category-btn,
+  .expand-btn,
   .edit-feed-btn {
     opacity: 0;
   }
 
   .category-header:hover .edit-category-btn,
-  .edit-category-btn:focus-visible,
+  .category-header:hover .expand-btn,
+  .category-header:has(:focus-visible) .edit-category-btn,
+  .category-header:has(:focus-visible) .expand-btn,
   .feed-row:hover .edit-feed-btn,
-  .edit-feed-btn:focus-visible {
+  .feed-row:has(:focus-visible) .edit-feed-btn {
     opacity: 1;
   }
 }

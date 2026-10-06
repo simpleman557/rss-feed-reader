@@ -362,16 +362,13 @@ export default function Sidebar({
                 </form>
               ) : (
                 // The whole row selects the category (the name button's click bubbles up to
-                // it). With a mouse, selecting also expands/collapses — there's no chevron
-                // on desktop. On touch, a tap only selects; the selected row then shows a
-                // pencil and a chevron right after the name, and the chevron is what
-                // expands. The two small buttons stop propagation so they don't also select.
+                // it) and never expands it. The pencil and chevron sit right after the name
+                // and are what edit/expand: shown while the mouse is over the row (desktop)
+                // or on the selected row (touch). They stop propagation so using them
+                // doesn't also select.
                 <div
                   className={`category-header ${selectedCategoryId === cat.id ? "active" : ""}`}
-                  onClick={() => {
-                    onSelectCategory(cat.id);
-                    if (window.matchMedia("(hover: hover)").matches) toggleCollapsed(key);
-                  }}
+                  onClick={() => onSelectCategory(cat.id)}
                 >
                   <button
                     className={`sidebar-item ${selectedCategoryId === cat.id ? "active" : ""}`}
