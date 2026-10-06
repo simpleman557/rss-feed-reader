@@ -16,3 +16,8 @@ iap_settings.yaml
 
 # Local editor / tool config
 .claude/
+
+# Playwright (web/e2e): throwaway test database, reports, traces
+web/e2e/.data/
+web/test-results/
+web/playwright-report/
