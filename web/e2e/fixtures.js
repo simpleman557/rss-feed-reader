@@ -11,7 +11,8 @@ export const test = base.extend({
       (url) => !["127.0.0.1", "localhost"].includes(url.hostname),
       (route) => route.abort()
     );
-    await page.route("**/api/refresh", (route) => route.fulfill({ json: { count: 0, errors: [] } }));
+    // (A regex, so "?force=1" on the Refresh button's call matches too.)
+    await page.route(/\/api\/refresh(\?.*)?$/, (route) => route.fulfill({ json: { count: 0, errors: [] } }));
     await page.route("**/api/feeds/*/refresh", (route) => route.fulfill({ json: {} }));
     await provide(page);
   },

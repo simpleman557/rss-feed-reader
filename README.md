@@ -78,7 +78,9 @@ All settings are optional environment variables.
 | `PORT` | `3001` | Port to listen on |
 | `HOST` | `127.0.0.1` | Interface to bind to. Keep the default unless you've put the app behind authentication. |
 | `FEED_READER_DATA_DIR` | OS per-app data folder (e.g. `~/Library/Application Support/Feed Reader` on macOS) | Where the SQLite database lives |
-| `SQLITE_JOURNAL_MODE` | `WAL` | Use `DELETE` on network or FUSE filesystems |
+| `SQLITE_JOURNAL_MODE` | `WAL` | Leave it. Only for a database on a network or FUSE filesystem, which is what corrupted the hosted one once, so don't put it there |
+| `FEED_READER_SNAPSHOT_BUCKET` | unset | Hosted setup only: a Cloud Storage bucket the database is restored from at startup and snapshotted to after every write. Unset for local use |
+| `FEED_READER_SNAPSHOT_OBJECT` | `feed-reader.db` | Object name inside that bucket |
 | `ALLOWED_HOSTS` | loopback only | Comma-separated hostnames allowed in the `Host` header, or `*` |
 
 The app has no login of its own. Don't expose it to a network you don't trust without putting authentication in front of it.
@@ -99,7 +101,7 @@ Dockerfile     Single image: API + built frontend
 
 ## Deploying to Cloud Run
 
-The app can also run as a private Cloud Run service, reachable from your phone or any browser. It's a single instance with the SQLite database on a mounted Cloud Storage bucket, and Identity-Aware Proxy puts Google sign-in in front of it. The `Dockerfile` builds the image; [docs/DEPLOY.md](docs/DEPLOY.md) has the step-by-step commands, environment variables and troubleshooting.
+The app can also run as a private Cloud Run service, reachable from your phone or any browser. It's a single instance running SQLite on the container's local disk, with snapshots of the database uploaded to a Cloud Storage bucket after every write (and restored from it at startup), and Identity-Aware Proxy puts Google sign-in in front of it. The `Dockerfile` builds the image; [docs/DEPLOY.md](docs/DEPLOY.md) has the step-by-step commands, environment variables and troubleshooting.
 
 Things that differ from running locally:
 

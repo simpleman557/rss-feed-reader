@@ -7,7 +7,9 @@ async function requestJson(path) {
   const res = await fetch(path, { method: "POST", headers: { "X-Feed-Reader": "1" } });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const err = new Error(body.error || `Request failed (${res.status})`);
+    err.status = res.status; // lets the UI tell a server error from a network failure
+    throw err;
   }
   return res.json();
 }
@@ -16,6 +18,9 @@ export function refreshFeed(feed) {
   return requestJson(`/api/feeds/${feed.id}/refresh`);
 }
 
-export function refreshAllFeeds() {
-  return requestJson("/api/refresh");
+// `force` is for a deliberate click on Refresh. Without it the server may answer with a
+// refresh that finished in the last few minutes instead of fetching everything again (see
+// server/src/refreshCoordinator.js), which is what page loads and the timer want.
+export function refreshAllFeeds({ force = false } = {}) {
+  return requestJson(force ? "/api/refresh?force=1" : "/api/refresh");
 }

@@ -7,7 +7,9 @@ async function request(path, options) {
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || `Request failed (${res.status})`);
+    const err = new Error(body.error || `Request failed (${res.status})`);
+    err.status = res.status; // lets the UI tell a server error from a network failure
+    throw err;
   }
   if (res.status === 204) return null;
   return res.json();

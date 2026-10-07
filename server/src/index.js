@@ -11,6 +11,8 @@ import importRouter from "./routes/import.js";
 import { requireLoopbackHost } from "./requestGuards.js";
 import { securityHeaders } from "./securityHeaders.js";
 import { setStaticCacheHeaders } from "./staticCache.js";
+import { snapshotter } from "./db.js";
+import { snapshotAfterWrites } from "./snapshot.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_DIST = path.join(__dirname, "..", "..", "web", "dist");
@@ -31,6 +33,9 @@ app.use(securityHeaders);
 // several MB of repetitive JSON, which shrinks by roughly an order of magnitude — the
 // difference between usable and painful on a phone's cellular connection.
 app.use(compression());
+// Hosted setup: hold each write's response until a snapshot including it is in the bucket
+// (see snapshot.js). `snapshotter` is null for local use, so this does nothing there.
+if (snapshotter) app.use(snapshotAfterWrites(snapshotter));
 // OPML import posts a whole subscription list as JSON — thousands of entries is
 // realistic — which outgrows express.json()'s default 100 KB limit. It gets its own,
 // larger limit and is mounted before the global parser below, which would otherwise
@@ -74,6 +79,23 @@ app.use((err, req, res, next) => {
 // Wi-Fi, office LAN) full read/write access — including feed deletion, which cascades
 // to every saved article. Nothing but this machine's own browser needs to reach it.
 // Hosted deployments override with HOST=0.0.0.0 behind an authenticating proxy.
-app.listen(PORT, HOST, () => {
+const server = app.listen(PORT, HOST, () => {
   console.log(`Feed proxy server listening on http://${HOST}:${PORT}`);
 });
+
+// Cloud Run sends SIGTERM about 10 s before stopping an instance. Take one last snapshot so
+// anything written since the last request (background work) isn't lost, then exit. Doesn't
+// wait for requests still in flight: whatever they committed is in the snapshot, and a
+// refresh can simply run again.
+if (snapshotter) {
+  process.on("SIGTERM", async () => {
+    console.log("SIGTERM received: taking a final snapshot before shutting down.");
+    server.close();
+    try {
+      await snapshotter.shutdownFlush();
+    } catch (err) {
+      console.error(`[snapshot] Final snapshot failed: ${err.message}`);
+    }
+    process.exit(0);
+  });
+}
