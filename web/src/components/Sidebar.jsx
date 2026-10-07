@@ -250,7 +250,12 @@ export default function Sidebar({
       onDrop: (e) => {
         e.preventDefault();
         const feedId = Number(e.dataTransfer.getData("application/x-feed-id"));
-        if (!Number.isNaN(feedId)) onChangeFeedCategory(feedId, categoryId);
+        // Dropping a feed on the category it's already in (including over a sibling feed) is
+        // not a move, so don't send one — feeds inside a category keep their fixed order.
+        const feed = feeds.find((f) => f.id === feedId);
+        if (!Number.isNaN(feedId) && feed && (feed.categoryId ?? null) !== categoryId) {
+          onChangeFeedCategory(feedId, categoryId);
+        }
         setDragOverKey(null);
       },
     };
