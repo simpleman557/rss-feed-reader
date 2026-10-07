@@ -44,7 +44,7 @@ export default function TopBar({
         </label>
         <button
           className="refresh-btn"
-          onClick={() => onRefresh()}
+          onClick={() => onRefresh({ force: true })}
           disabled={refreshing}
           aria-label={refreshing ? "Refreshing" : "Refresh"}
         >

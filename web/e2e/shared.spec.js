@@ -10,6 +10,48 @@ test("loads without script errors", async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
+test.describe("error messages", () => {
+  test("a server error says the server hit an error, not that it can't be reached", async ({ page }) => {
+    await page.route("**/api/articles", (route) =>
+      route.fulfill({ status: 500, json: { error: "Internal server error" } })
+    );
+    await page.goto("/");
+    const banner = page.locator(".error-banner");
+    await expect(banner).toContainText("The server hit an error loading your feeds (500)");
+    await expect(banner).not.toContainText("Couldn't reach the server");
+  });
+
+  test("a failed connection still says it couldn't reach the server", async ({ page }) => {
+    await page.route("**/api/articles", (route) => route.abort());
+    await page.goto("/");
+    await expect(page.locator(".error-banner")).toContainText("Couldn't reach the server");
+  });
+
+  test("a server error during refresh is reported as one", async ({ page }) => {
+    await page.route(/\/api\/refresh(\?.*)?$/, (route) =>
+      route.fulfill({ status: 503, json: { error: "Internal server error" } })
+    );
+    await page.goto("/");
+    await expect(page.locator(".error-banner")).toContainText("The server hit an error while refreshing (503)");
+  });
+});
+
+test.describe("refreshing", () => {
+  test("page load and the timer don't force a refresh; the Refresh button does", async ({ page }) => {
+    const refreshUrls = [];
+    page.on("request", (r) => {
+      if (r.method() === "POST" && /\/api\/refresh(\?|$)/.test(r.url())) refreshUrls.push(new URL(r.url()).search);
+    });
+    await page.goto("/");
+    await expect(page.locator(".article-item, .empty-state").first()).toBeVisible();
+    expect(refreshUrls).toEqual([""]); // the on-load refresh: not forced
+
+    await page.getByRole("button", { name: "Refresh" }).click();
+    await expect.poll(() => refreshUrls.length).toBe(2);
+    expect(refreshUrls[1]).toBe("?force=1");
+  });
+});
+
 test.describe("Customization card", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/");

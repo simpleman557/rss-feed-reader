@@ -22,6 +22,7 @@ import {
 import { parseOPML } from "./data/opml";
 import { refreshAllFeeds, refreshFeed } from "./data/feeds";
 import { getStoredTheme, applyTheme } from "./theme";
+import { describeFailure } from "./data/errors";
 import "./App.css";
 
 function isToday(isoDate) {
@@ -187,10 +188,10 @@ export default function App() {
       if (resetSnapshot) {
         setSnapshot(new Map(arts.map((a) => [a.id, { read: a.read, saved: a.saved }])));
       }
-    } catch {
-      // The whole app depends on the server; if it's unreachable, say so plainly
-      // instead of silently rendering an empty shell.
-      setError("Couldn't reach the server. Make sure it's running, then hit Refresh.");
+    } catch (err) {
+      // The whole app depends on the server; say plainly what went wrong (unreachable vs.
+      // a server error) instead of silently rendering an empty shell.
+      setError(describeFailure(err, "load"));
     }
   }, []);
 
@@ -358,9 +359,9 @@ export default function App() {
     const summary = await importOpml(outlines);
     await reloadAll();
     if (summary.feedsAdded > 0) {
-      handleRefresh().catch(() => {
-        setError("Couldn't reach the server to fetch the imported feeds. Hit Refresh to retry.");
-      });
+      // Forced: the new feeds need fetching even if a refresh just finished. handleRefresh
+      // reports its own failures, so there's nothing to catch here.
+      handleRefresh({ force: true });
     }
     return summary;
   }
@@ -402,12 +403,12 @@ export default function App() {
   // one re-baselines the snapshot, letting already-read/un-saved articles finally drop
   // out of view. The background timer still fetches new content either way; it just
   // doesn't prune anything out from under you while you're reading.
-  async function handleRefresh({ explicit = true } = {}) {
+  async function handleRefresh({ explicit = true, force = false } = {}) {
     setRefreshing(true);
     setError(null);
     setRefreshErrors([]);
     try {
-      const { errors } = await refreshAllFeeds();
+      const { errors } = await refreshAllFeeds({ force });
       if (errors.length > 0) {
         setRefreshErrors(errors);
         setError(
@@ -418,10 +419,10 @@ export default function App() {
       } else {
         setRefreshErrors([]);
       }
-    } catch {
-      // A dropped connection (common on a phone) lands here; without this it was an
-      // unhandled rejection and the user saw nothing.
-      setError("Couldn't refresh — check your connection and try again.");
+    } catch (err) {
+      // A dropped connection (common on a phone) or a server error lands here; without
+      // this it was an unhandled rejection and the user saw nothing.
+      setError(describeFailure(err, "refresh"));
     } finally {
       await reloadAll({ resetSnapshot: explicit });
       lastRefreshAt.current = Date.now();
