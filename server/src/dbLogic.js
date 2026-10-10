@@ -76,7 +76,7 @@ export function createDb(db) {
   }
 
   // Every feed must always belong to a real category — there's no "Uncategorized"
-  // bucket for orphaned feeds to fall back into (see Sidebar/Data Model in SPEC.md) — so
+  // bucket for orphaned feeds to fall back into (see Sidebar/Data Model in docs/adr/2026-10-06-feed-reader-spec.md) — so
   // a category can't be deleted while it still has feeds in it; the user has to move or
   // delete them first. (The feeds.categoryId foreign key is still ON DELETE SET NULL as
   // a defense-in-depth fallback, but this check means that path should never actually
