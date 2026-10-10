@@ -284,6 +284,11 @@ Notes:
 - **If the IAP session expires** while the app is open, background requests may fail and show
   the error banner instead of a sign-in page. This has not been observed yet. Closing the app
   and opening it again is the first thing to try; record what actually happens here.
+- **Re-adding the icon loses paywall logins.** iOS caches the home-screen icon when it is added,
+  so a new icon means deleting and re-adding the app. Each home-screen entry keeps its own logins
+  for the in-app sheet, so you sign in again to paywalled sources in the new one (seen on a real
+  iPhone; Google sign-in was not asked for again). Add the new entry first and keep the old one
+  until the logins are back.
 - To undo it, delete the icon from the home screen. Nothing on the server changes.
 
 ## Limits
