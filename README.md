@@ -110,6 +110,8 @@ Things that differ from running locally:
 - **Some sites block requests from cloud servers.** One site-specific fallback exists (see `server/src/espnNews.js`); other affected sites show "Blocked by bot protection".
 - **Feeds refresh only while the app is open in a browser tab**, same as locally.
 
+**On an iPhone**, open the service URL in Safari, tap Share, then Add to Home Screen. It launches full screen like an app, and article links open in an in-app browser sheet with an X and a back button that return you to the reader where you left off. See [Installing on an iPhone](docs/DEPLOY.md#installing-on-an-iphone-home-screen).
+
 ## Notes
 
 - Backend business logic (ordering/uniqueness rules, retention purge, guid-fragment dedup, icon-discovery validation) has automated test coverage — see [docs/adr/2026-10-06-feed-reader-spec.md](docs/adr/2026-10-06-feed-reader-spec.md)'s Testing section for what each file covers. The frontend has end-to-end tests (Playwright) covering the sidebar, the phone drawer, hover vs. touch behavior, the Customization card, and list rendering — see the same section.

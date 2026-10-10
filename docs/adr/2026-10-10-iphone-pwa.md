@@ -13,10 +13,10 @@ Resolve these before coding unless marked otherwise.
 
 - **ASSUMPTION A1 (unverified, the success criterion):** in an iOS home-screen app, a `target="_blank"` link to an external site opens in an in-app Safari sheet with a Done button that returns to the app. Only a real-phone test can confirm this (M-2).
 - **ASSUMPTION A2 (unverified, the biggest risk):** Google sign-in via IAP works inside the home-screen app. IAP redirects to `accounts.google.com`, a different site, and iOS may handle that navigation differently in standalone mode. If sign-in cannot complete, this approach fails (M-1).
-- **ASSUMPTION A3:** iOS keeps separate cookie storage for the home-screen app, so one extra sign-in is needed.
+- **A3 (disproved on the real phone):** I assumed iOS keeps separate cookie storage for the home-screen app, so one extra sign-in would be needed. It was not asked for.
 - **ASSUMPTION A4:** safe-area padding already exists in `web/src/App.css` (`env(safe-area-inset-*)`, verified by reading it), but it has not been checked in standalone mode. `default` is chosen as the lowest-risk status bar style, and M-1 checks it visually (see section 2).
 - **RESOLVED:** the CSP needs no change. In `server/src/securityHeaders.js` the manifest falls back to `default-src 'self'`, and icons are covered by `img-src 'self' data: https: http:`. Verified by reading the file.
-- **OPEN (default stands unless you object):** icon artwork is the existing `web/public/favicon.svg` rendered to PNG, with a solid background.
+- **RESOLVED (amended 2026-10-10):** the original plan reused `web/public/favicon.svg`, which turned out to be the stock Vite starter bolt, so it read as a generic browser icon. Replaced with a Feed Reader icon (concept "C-Dark": RSS symbol over three article lines, on the app's dark surface `#151922`, symbol in the dark accent `#8a8af5`, lines `#e7eaf1` and `#aab1c2` so they stand out). One fixed icon, used for the browser tab and the home screen; no light/dark switching. iOS appears to take a single PNG for the home-screen icon; not verified, and not needed given this decision.
 
 ## 1. Requirements
 
@@ -125,6 +125,8 @@ N/A: there is no new logic. A unit test would only mirror the file contents.
 ## Change log
 
 - 2026-10-10: initial draft
+- 2026-10-10: amendment: replaced the icon (see the RESOLVED note above). `favicon.svg` and the three PNGs are regenerated from one drawing (rounded for the tab, full square for iOS). No change to the manifest, tags, or tests. A deploy plus a re-add of the home-screen icon is needed to see it on the phone, because iOS caches the icon when it is added.
+- 2026-10-10: deployed (revision `feed-reader-00015-86k`) and tested on a real iPhone. M-0 passed (manifest shows JSON). M-1 passed (launches full screen, feeds load, status bar looks normal; no second sign-in was asked for, so A3 was wrong). M-2 passed (article opens in an in-app sheet with an X at the top left and a back button at the bottom left; both return to the same scroll position, article marked read), so A1 and A2 held. Light and dark mode both look fine in the installed app (M-1 complete). Also seen on the phone: paywalled sources let the user log in inside the in-app sheet, and two sources opened their own native apps directly, each with a back-to-Feed-Reader control. Still to do before marking Implemented: about a day of normal use, and M-3 when a sign-in eventually expires. README and DEPLOY.md updated.
 - 2026-10-10: approved; built manifest, icons (rendered from `favicon.svg` with Playwright's Chromium onto `#0a0c11`) and `index.html` tags. IT-1 passes, which also confirms Express serves `.webmanifest` with a json/manifest content type, so no server change is needed. M-0 to M-3 and the docs updates remain.
 - 2026-10-10: second critique; corrected A4 (safe-area padding exists in `App.css`), added a content-type check to IT-1, made the deploy-then-docs order explicit
 - 2026-10-10: reconciled with spec-writer; applied critique fixes (sign-in gate M-1, pass/fail for M-2, status bar style pinned to `default`, icon background and method, IT-1 limits and M-0, expired-session scenario M-3); recorded that the CSP needs no change
