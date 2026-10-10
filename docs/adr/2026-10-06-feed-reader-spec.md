@@ -1,8 +1,90 @@
 # Feed Reader — Spec
 
-A self-hosted, minimal alternative to Feedly. Local-first in the sense of no user accounts and no third-party services — but persistence lives in a SQLite database owned by the server, not the browser, so subscriptions and read state survive clearing browser data and aren't tied to one browser profile. Built to run in Firefox first, with mobile-browser use as a secondary goal.
+<!-- Structured per docs/SPEC_TEMPLATE.md. Section names inside each part are the original
+     spec's own names, so "see Data Directory"-style cross-references still resolve. -->
 
-## Architecture
+**Status:** Implemented
+**Date:** 2026-10-06 (restructured to the spec template 2026-10-10)
+**Scope in one sentence:** A self-hosted, minimal alternative to Feedly: no user accounts and no third-party services, with subscriptions and read state kept in a SQLite database owned by the server.
+
+## Open questions and assumptions
+
+Everything the spec still treats as unresolved lives in **Known gaps / not implemented** below, plus the decided-against and undecided items under Non-goals (Future enhancements). Assumptions the design rests on:
+
+- One user and, when hosted, one instance (`--max-instances=1`): SQLite wants a single writer, and the snapshot design accepts a few seconds of lost read/saved marks in a deploy overlap (see Hosted durability).
+- The only intended client is this machine's own browser locally, or an IAP-authenticated browser when hosted; the API has no authentication of its own (see Running it, Network binding).
+- Personal-reader scale: the whole article set is held and filtered client-side, and whole-file snapshots are fine up to a few tens of MB (see Hosted durability, Growth path).
+
+### Known gaps / not implemented
+
+Missing pieces of work within the app's already-decided scope and design — not wishlist items still under consideration (see Future enhancements below for those). Ordered roughly from least to most work it'd actually take to close, not by importance.
+
+**Medium** — a small, self-contained feature, not just a tweak:
+- **Mark all as read** — close to a simple batch update; not yet decided on or built. (Unread/saved counts *are* now implemented — see Sidebar.)
+
+**Larger** — needs a design decision or real architecture before it's just "write the code":
+- Hosted deployment: a `Dockerfile` and `DEPLOY.md` cover Cloud Run (SQLite on the container's local disk with snapshots to a Cloud Storage bucket, single instance, IAP for access). Feeds whose sites block cloud IPs fail there unless they have a fallback (one site does, see Architecture). There's still no process-manager config or HTTPS setup for self-hosting outside Cloud Run, and background refresh isn't server-side (refresh is client-driven, so feeds only update while a tab is open).
+
+## 1. Requirements
+
+**User outcome:** A self-hosted, minimal alternative to Feedly. Local-first in the sense of no user accounts and no third-party services — but persistence lives in a SQLite database owned by the server, not the browser, so subscriptions and read state survive clearing browser data and aren't tied to one browser profile. Built to run in Firefox first, with mobile-browser use as a secondary goal.
+
+**Functional requirements** (each is specified in full under Design below)
+- Subscribe to RSS/Atom feeds, organised into categories (every feed has exactly one); rename, recategorise by drag-and-drop, delete. See Sidebar, Data Model.
+- Read a unified, date-grouped, searchable article list with sorting; views for All Feeds, Today (a per-category digest), Read Later and Read Articles. See Today, Main content area.
+- Refresh feeds on demand and automatically every 15 minutes while a tab is visible. See Auto-refresh.
+- Per-article images and discovered site icons, with a clean fallback chain. See Per-article images, Feed icons.
+- Import and export subscriptions as OPML. See Export & Import (OPML).
+- Bound storage by deleting articles 30 days after publish/read/unsave; saved articles are exempt. See Retention & Purge.
+- Light, dark and system appearance; usable on phones. See Appearance, Sidebar, Design decisions (mobile).
+
+**Non-functional requirements** (these drive the architecture, so set them first)
+- Performance targets: refresh-all fetches at most 10 feeds at a time and reuses a result under 5 minutes old (see Auto-refresh); a hosted write costs about 140 ms extra for its snapshot, a cold-start restore takes about a second, and a 17-feed refresh took 1.7 s (see Hosted durability, Measured); remote-content parsing is linear-time and size-capped (see Architecture, Bounded parsing of remote content).
+- Scale: personal use. OPML import accepts at most 5000 entries; the initial render is 100 rows, growing on scroll; whole-file snapshots are good to a few tens of MB, with Litestream the next step at roughly 50–100 MB (see Hosted durability, Growth path).
+- Reliability — what must never be lost or corrupted: subscriptions and read/saved state. The server refuses to start rather than start empty or on a damaged database, migrations are transactional, and each hosted write is in the bucket before the client sees success (see Hosted durability, Migrations).
+
+**Non-goals** (what this deliberately does not do)
+- No third-party services: no AI summarisation, no popularity ranking for Today, no keyword search for feeds (see Future enhancements, Design decisions).
+- No manual reordering or sort buttons (built, then removed), no "Uncategorized" concept, no standalone installer, no rollback tooling for migrations (see Design decisions, Migrations).
+- Full list of ideas that are deferred or ruled out: **Future enhancements** under Non-goals / deferred, below.
+
+**Acceptance criteria: trust and quality**
+- Data collected, and why it is needed: only the user's own subscriptions, their read/saved state and the articles fetched from those feeds, stored in SQLite so they persist independent of the browser. No accounts, no analytics, and no feed or interest data goes to any third party (see the scope line above, Future enhancements). `Referrer-Policy: no-referrer` stops image hosts learning the referring URL (see Running it, `securityHeaders.js`).
+- Permissions requested, when, and why: none from the user or the browser. Outbound server fetches are restricted to public addresses (see Architecture, `safeFetch.js`); when hosted, access is gated by Identity-Aware Proxy (see Deployment).
+- Accessibility considerations: the appearance control exposes `aria-pressed` and dark mode is treated as an accessibility feature (see Appearance); 44px touch targets and 16px form fields on touch devices (see Architecture, `web/`); keyboard focus reveals the same controls hover does (see Sidebar, Visual design); the closed mobile drawer is removed from the tab order (see Design decisions).
+- What happens when AI output is wrong? Not applicable: no AI output is produced. `contentSnippet` is the feed's own description truncated to 280 characters (see Architecture).
+- Server errors and an unreachable server read differently, so a failure points the reader at the right place (see Design decisions, Behavior and UI).
+
+## 2. Architecture / Design
+
+**Components** (what exists and what each one owns): `server/` owns all persistent data and every business rule; `web/` is a thin client that holds no data of its own. Detail follows in Architecture, then one subsection per feature.
+
+**Data flow** (how information moves; mark where state changes)
+- Browser (`web/src/data/db.js`, `feeds.js`) → `/api/*` (Vite proxies to :3001 in dev; Express serves the built app otherwise) → route → `dbLogic.js` `createDb(db)` → SQLite. State changes: every non-GET request, plus the background `og:image` pass after a refresh.
+- Refresh: `POST /api/refresh` → `refreshCoordinator.js` (one run at a time, recent result reused) → up to 10 feeds at a time → `feedParser.js` over `safeFetch.js` → `upsertArticles` (new rows only; image backfill) → `faviconResolver.js` on first sync and every 30 days → retention purge → response; the `og:image` pass then runs in the background. When hosted, `snapshotAfterWrites` holds each write's response until its snapshot is uploaded to the bucket.
+
+**Dependency map** (which component depends on which, and in what direction)
+```
+web (React)  ->  /api routes  ->  db.js  ->  dbLogic.js  ->  dbHelpers.js (pure), retention.js, opmlImport.js
+                      |              |-> migrations.js, dataDir.js
+                      |              '-> snapshot.js (hosted only; restores before the database opens)
+                      '-> routes/refresh.js -> refreshCoordinator.js, settleWithConcurrency.js
+                                            '-> refreshFeed.js -> feedParser.js -> rss-parser (stripHtml.js patch),
+                                                    |            feedWideImage.js, trackingPixel.js, espnNews.js
+                                                    |-> faviconResolver.js, ogImageFetcher.js
+                                                    '-> db.js (syncFeedMetadata, upsertArticles, ...)
+every outbound fetch (feedParser, faviconResolver, ogImageFetcher) goes through safeFetch.js
+snapshot.js <-> Cloud Storage bucket
+```
+
+**Impact check on existing code**
+- Components this feature touches: not applicable — this document describes the system as built, so it is the baseline against which later specs run their own impact check.
+- What else depends on them: see the dependency map above.
+- Contracts that could break: the API table and the SQLite schema (sections 3 and 4).
+
+**Delete check:** Decided deletions are recorded under Design decisions: manual reordering and sort buttons (removed), the "Uncategorized" concept (removed), `GET /api/feed?url=` (removed as an SSRF primitive, see Architecture), the unused `cors` dependency (removed, see Running it). A few defensive fallbacks for the impossible no-category case remain on purpose as harmless dead paths.
+
+### Architecture
 
 **`server/`** — Node/Express. No file-watching — restarting it (`Ctrl+C` then `npm start`) is required to pick up any backend code change; unlike the Vite frontend, there's no hot-reload here.
 - Owns all persistent data — categories, feeds, articles, read/saved state — in a single SQLite file, `feed-reader.db` (via `better-sqlite3`), kept in an OS-appropriate user data directory *outside* the project/install directory — see Data Directory below. `server/src/db.js` itself is now just wiring: in the hosted setup it first restores the database from the bucket (see Hosted durability below), then opens the real connection, runs migrations, and binds it to the business logic. That logic — every ordering/uniqueness rule (`addCategory`, `addFeed`, `renameFeed`, etc.) — lives in `server/src/dbLogic.js`'s `createDb(db)` factory, with the handful of functions that need no database at all (`normalizeFeedUrl`, `findAlphabeticalOrder`, `uniqueTitleInBucket`, …) pulled out further still into `server/src/dbHelpers.js`. Schema/data migrations are `server/src/migrations.js`'s job (see Migrations below); the retention purge is `server/src/retention.js`'s (see Retention & Purge below). All of this was split out of `db.js` specifically so none of it has a module-level database connection of its own and each piece can be unit-tested against a throwaway database instead of the real one (see Testing below).
@@ -25,31 +107,7 @@ A self-hosted, minimal alternative to Feedly. Local-first in the sense of no use
 - Holds no persistent data of its own. `web/src/data/db.js` is a thin `fetch()`-based client exposing the exact same function names/signatures the UI has always called (`getCategories()`, `addFeed()`, `markRead()`, etc.) — only the implementation changed, from local IndexedDB calls to HTTP requests, so `App.jsx`/`Sidebar.jsx`/`ArticleList.jsx`/`ArticleItem.jsx`/`TopBar.jsx` needed no changes at all. `web/src/data/feeds.js` similarly wraps the two refresh endpoints.
 - A single breakpoint at 768px: above it, the sidebar is a fixed 260px independently-scrolling left column; below it, the sidebar is an off-canvas drawer opened from a ☰ button in the top bar (see Design decisions), so articles fill the screen. Touch devices (`pointer: coarse`) get 44px tap targets and 16px form fields at any width.
 
-## API
-
-| Method | Path | Body | Response |
-|---|---|---|---|
-| GET | `/api/categories` | — | array of categories |
-| POST | `/api/categories` | `{ name }` | `{ id }` |
-| PATCH | `/api/categories/:id` | `{ name }` | 204 |
-| DELETE | `/api/categories/:id` | — | 204 |
-| GET | `/api/feeds` | — | array of feeds |
-| POST | `/api/feeds` | `{ url, categoryId }` | `{ id }` |
-| PATCH | `/api/feeds/:id` | `{ title }` | 204 |
-| PATCH | `/api/feeds/:id/category` | `{ categoryId }` | 204 |
-| DELETE | `/api/feeds/:id` | — | 204 |
-| POST | `/api/feeds/:id/refresh` | — | `{ title, feedImageUrl, link, items }` |
-| GET | `/api/articles` | — | array of articles |
-| PATCH | `/api/articles/:id/read` | `{ read }` | `{ readAt }` |
-| PATCH | `/api/articles/:id/saved` | — | `{ saved }` |
-| POST | `/api/refresh` | — | `{ count, errors }` |
-| POST | `/api/import` | `{ outlines }` | `{ feedsAdded, categoriesCreated, duplicates, invalid }` |
-
-Validation errors (duplicate/reserved category name, duplicate feed URL, duplicate manually-renamed feed title) respond `400 { error: "message" }`, using the same message text the app has always shown; `web/src/data/db.js` throws `Error(body.error)` on any non-OK response so the existing `window.alert`-on-catch handling in `Sidebar.jsx` keeps working unchanged.
-
-`POST /api/refresh` (hit by both the manual Refresh button and the auto-refresh timer) and `POST /api/feeds/:id/refresh` (hit right after adding a feed) do the entire fetch-and-persist cycle server-side — the browser no longer orchestrates a per-feed loop itself, since both the fetching and the storage now live on the server anyway.
-
-## Per-article images
+### Per-article images
 
 Most RSS/Atom feeds embed a per-article image in one of several incompatible ways, with no single standard — `server/src/feedParser.js`'s `itemImageUrl()` tries each, in order of how explicit the signal is:
 
@@ -69,7 +127,7 @@ Some feeds don't include image data in any of these forms — the image only app
 
 `ArticleItem.jsx` resolves each row's image through an ordered, best-first fallback: the article's own image (`article.imageUrl`, shown with `object-fit: cover` / `.article-image--photo` — photos vary enough in composition that covering the row's image slot reads better than letterboxing), then the feed's clean site icon (`feedImageUrl`, `object-fit: contain` so a logo keeps its full shape), then `PLACEHOLDER_ICON`. The slot itself is 92px wide and stretches (`align-self: stretch` in the row's grid — see Main content area below) to match whatever height that row's two-line title/snippet block ends up needing, so it isn't a fixed square the way the 40×40 tile it replaced was. Each candidate's `onError` records that URL as failed (keyed on the URL, not an index, so a later refresh swapping in a new image is retried) and advances to the next, so an article image that 404s or is hotlink-blocked — or a stray non-URL like a literal `"undefined"` — lands on the clean feed icon rather than skipping straight to the grey placeholder. `upsertArticles` uses `INSERT OR IGNORE`, so an article already stored keeps whatever `imageUrl` it got on first fetch — a backend extraction-logic improvement only benefits articles fetched after it, which is why the icon-only and tracking-pixel cleanups also ship as migrations that backfill existing rows (below).
 
-## Feed icons
+### Feed icons
 
 Every sidebar feed entry shows the feed's own site icon (`feedImageUrl`). Article rows prefer a per-article photo (`article.imageUrl` — see Per-article images above) when one is available, falling back to the feed icon, then to `PLACEHOLDER_ICON` on error. At the 92px-wide (article row) / 16×16 (sidebar) size this renders at, a scraped article photo varies too wildly in subject/crop to read as anything specific, while a consistent per-feed mark is recognizable at a glance; a brief exploration of generated letter-monogram tiles (solid-color initials) was tried and rejected once it became clear that manually guessing each publisher's brand color was error-prone (several guesses were simply wrong, and there's no way to know without checking) and unnecessary, since most feeds already had a usable real logo available.
 
@@ -79,73 +137,7 @@ Every sidebar feed entry shows the feed's own site icon (`feedImageUrl`). Articl
 
 **Rechecking periodically, automatically** (`shouldDiscoverIcon` in `faviconResolver.js`): fetching and parsing a whole homepage is worth doing on every refresh — see the `feedImageUrl`/`iconCheckedAt` bullets under Data Model above for exactly when. Rather than gating solely on "is `feedImageUrl` still `NULL`" (which meant a feed with an already-decent-but-not-great icon could never pick up a later improvement to this file's ranking/validation logic, or a site's own icon change, without someone noticing and re-running a one-off script by hand), every feed also carries an `iconCheckedAt` timestamp of when discovery was last *attempted*. `shouldDiscoverIcon(feed)` returns true on a feed's first sync (`iconCheckedAt` still `null`) or once 30 days have passed since the last attempt — chosen deliberately generous, since a site rebranding its icon or this file's own logic improving are both rare, low-frequency events, and rechecking mostly-unchanged icons more often would just be wasted homepage fetches across every subscribed feed. If a recheck's discovery attempt comes back empty (e.g. the site was briefly down), `refreshFeed.js` falls back to the feed's existing `feedImageUrl` rather than the cheap RSS-derived guess, so a transient recheck failure can never downgrade an already-good icon — the guess is only ever used when there's truly nothing better yet. Fully automatic — no button, no endpoint, no manual script.
 
-## Data Directory
-
-`feed-reader.db` lives outside the project/install directory entirely, so updating or reinstalling the code never touches your data — the same reasoning real desktop apps use (e.g. macOS keeps app data in `~/Library/Application Support/`, not inside the `.app` bundle). Computed once in `server/src/dataDir.js`, in priority order:
-
-1. `FEED_READER_DATA_DIR` environment variable, if set — an explicit override for anyone who wants the file somewhere specific (a synced folder, an external drive, etc). The Docker image sets it to `/data`, a plain local folder inside the container; in the hosted setup it holds the working copy of the database and the bucket holds snapshots of it (see Hosted durability).
-2. Otherwise, an OS-appropriate default: `~/Library/Application Support/Feed Reader` on macOS, `%APPDATA%/Feed Reader` on Windows, `$XDG_DATA_HOME/feed-reader` (or `~/.local/share/feed-reader`) on Linux.
-
-**One-time migration**: earlier versions stored the database inside the project directory (`server/data/feed-reader.db`). On startup, if nothing exists yet at the new location but the old file does, `dataDir.js` moves it (and its `-wal`/`-shm` SQLite sidecar files, which can hold not-yet-checkpointed writes) to the new location automatically, logging what it did — existing subscriptions and read/saved state survive the upgrade untouched. This is a one-shot check (skipped once a file exists at the new location), not an ongoing sync.
-
-**Journal mode**: `db.js` uses SQLite's WAL mode everywhere, including the hosted setup, since the database is now on the container's local disk. `SQLITE_JOURNAL_MODE` remains as an override (validated against SQLite's modes) for anyone who puts the file on a network or FUSE filesystem, which can't provide the shared memory WAL needs — but that is the setup that corrupted the hosted database once (see Hosted durability), so don't.
-
-## Migrations
-
-Schema and one-time data changes are tracked with SQLite's built-in `PRAGMA user_version` — a single integer stored in the database file's own header, which is exactly what it's for, so no extra table or dependency is needed. `server/src/migrations.js` holds an ordered list of `{ version, name, run(db) }` migrations; `runMigrations(db)` (called once from `db.js`, right after opening the connection) reads the stored version, runs only the migrations numbered higher than it, in order, and bumps the version after each one succeeds — each inside its own transaction, so a failure leaves the database at its last-known-good version rather than half-applied.
-
-There's deliberately no rollback tooling — a migration that throws crashes the app on startup rather than silently continuing against a schema the code doesn't expect, and for a single-user local tool, backing up the database file first (already this project's practice before anything risky— see Design decisions) is the accepted substitute for real rollback support. A full framework (Prisma/Knex-style, with rollback and branching) would be solving for a multi-environment risk profile this app doesn't have.
-
-Every migration is also internally idempotent (checks before altering) even though the version tracker alone would normally make that redundant — this system was retrofitted onto a database that had already picked up some of its changes via older, ad-hoc guards before `migrations.js` existed (its `user_version` started at 0 even though migrations 1 and 2 had, in substance, already happened), so each one has to be safe to run again as a no-op. Adding a new migration means appending a new entry with the next version number; existing entries should never be edited once shipped, only appended after.
-
-## Data Model (SQLite)
-
-**`categories`** — `{ id, name, order }`
-- `name` must be unique, case-insensitive, trimmed.
-- `"Uncategorized"` (any case) is reserved — cannot be used as a real category name.
-- `order` is a `REAL` column, auto-managed (see Ordering below); `NOT NULL` from creation, so — unlike the original IndexedDB version — there's no missing-value healing to worry about on read.
-
-**`feeds`** — `{ id, url, categoryId, title, feedImageUrl, siteUrl, iconCheckedAt, order }`
-- `categoryId` is always a real category id — every feed must belong to one (see Sidebar below for why "Uncategorized" was removed as a concept entirely). `addFeed`/`updateFeedCategory` both reject a missing or nonexistent `categoryId` (`requireCategory` in `dbLogic.js`), and `deleteCategory` refuses to delete a category that still has feeds in it (`"<name>" still has feeds in it — move or delete them first.`) rather than orphaning them. The column keeps `ON DELETE SET NULL` on its foreign key purely as a defense-in-depth fallback — through normal app use, that path should never actually fire.
-- `title` starts out equal to `url` at creation time (a placeholder) and is overwritten with the feed's real title **only on the very first successful refresh** (while `title` still equals `url`) via `syncFeedMetadata` — every subsequent refresh leaves `title` alone, so neither the auto-synced title nor a later manual rename is ever silently reverted by a refresh.
-- `siteUrl` is the feed's real homepage (parsed from the RSS `<link>` element, e.g. `https://www.example.com/sport` — often a different host than the feed URL itself, e.g. `feeds.example.com`). Re-synced on every refresh; exists purely so `faviconResolver.js` has something reliable to fetch (see Feed Icons below).
-- `feedImageUrl` (the icon shown in the sidebar and next to every article from that feed — see Feed Icons below) is **not** unconditionally re-synced like it used to be, since discovery involves fetching the feed's homepage — not something to redo on literally every refresh. `refreshFeed.js` runs discovery (and so only touches `feedImageUrl`) on a feed's first sync, and periodically thereafter — see `iconCheckedAt` below and `shouldDiscoverIcon` under Feed Icons.
-- `iconCheckedAt` records when icon discovery was last *attempted* for this feed (success or failure), regardless of whether it found anything. `shouldDiscoverIcon` (see Feed Icons) uses it to gate re-discovery to roughly once every 30 days per feed instead of on every refresh, so an already-populated icon can still automatically pick up a later improvement to `faviconResolver.js` or a site's own icon change — without anyone needing to notice and re-run a one-off script.
-- If the title being auto-synced on that first refresh would collide with another feed's title already in the same category bucket (two different feeds can legitimately share a real-world title, e.g. two editions of the same publication), it's automatically disambiguated with a `" (2)"`, `" (3)"`, etc. suffix (`uniqueTitleInBucket` in `dbHelpers.js`) rather than silently producing two identically-named feeds.
-- `title` uniqueness is otherwise enforced **per category/bucket only** (two feeds can share a name if they're in different categories), and explicitly on user-driven rename (`renameFeed` throws on a collision) — the auto-sync path above uses disambiguation instead of throwing, since there's no user present to show an error to.
-- **`url` (normalized) must be globally unique across all feeds, regardless of category.** Normalization (`normalizeFeedUrl` in `dbHelpers.js`): lowercases the host, treats `http`/`https` as equivalent, strips one trailing slash from the path. Deliberately does **not** lowercase the path or touch the query string (some feeds legitimately depend on `?format=rss`-style params) — so `www.` vs. bare domain, or a differing query string, are treated as genuinely different feeds and allowed through. Violating this throws `"This feed URL has already been added."`, caught in `Sidebar.jsx` and shown via `window.alert`.
-- `order` is scoped per bucket (per `categoryId`); values may overlap numerically across different buckets since they're never compared cross-bucket.
-
-**`articles`** — `{ id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, ogImageChecked, read, readAt, saved, unsavedAt }`
-- `id` = `` `${feedId}::${guid || link}` `` (a `TEXT PRIMARY KEY`, not an autoincrement number) — this is what makes refresh idempotent, and it's also used directly as the React list key and click-handler argument on the frontend, so it must stay a string. `guid` has any trailing `#fragment` stripped before use (`feedParser.js`) — some feeds reuse the same guid for a live-updated article but append an incrementing revision fragment each time it's edited (`...#0`, then `...#8`), which would otherwise make every edit look like a brand-new article. This only affects the identity/guid, never the `link` field itself, since some sites legitimately depend on a real fragment there for deep-linking.
-- `insertedAt` is set once, at first insert — a fallback anchor for the retention rule below when `isoDate` is missing/unparseable.
-- `readAt` is set the moment `read` flips `false → true` (i.e. on click-to-open; there's no separate "mark read" affordance, and no "mark unread" UI either, so the reverse transition never currently happens).
-- `unsavedAt` is set the moment `saved` flips `true → false`.
-- Refreshing a feed (`upsertArticles`) never overwrites an existing article — `read`/`readAt`/`saved`/`unsavedAt`/`imageUrl`/`ogImageChecked` are preserved permanently across refreshes; only genuinely new guids get inserted. `ogImageChecked` records when the background OG-image fetch was last attempted for this article (success or failure) — `NULL` means not yet attempted. The one exception to `imageUrl` being permanent: it is cleared when the feed is detected as icon-only (`clearArticleImagesForFeed`, on refresh) and by the feed-wide-image / tracking-pixel cleanup migrations — see Per-article images.
-- `feedId` has `ON DELETE CASCADE` — deleting a feed automatically deletes all of its articles via the foreign key.
-
-### Ordering (categories and feeds)
-
-There is currently **no manual drag-to-reorder and no sort buttons** anywhere in the UI (both were built, then intentionally removed— see Design decisions below). Ordering is fully automatic:
-- On **create**: new item is inserted at the alphabetically-correct position relative to the current order (not a full re-sort of everyone else).
-- On **rename**: the renamed item is repositioned alphabetically among its current siblings (again, not a full re-sort).
-- Moving a feed to a different category (drag-and-drop) **appends it to the end** of the new bucket — it is not re-alphabetized into its new home.
-- A periodic "normalize" pass squashes fractional order values back down to clean sequential integers after each mutation, wrapped in a `db.transaction(...)` so it's all-or-nothing.
-
-## Retention & Purge
-
-Storage is bounded by actually deleting articles (not a view-level filter), via `purgeExpiredArticles(db)` in `server/src/retention.js` — wrapped by `dbLogic.js`'s `createDb(db)` factory with its `db` argument already bound, so existing callers (a plain `purgeExpiredArticles()`, no args) are unaffected. **Saved articles (`saved === true`) are always exempt**, regardless of age.
-
-For every non-saved article, compute an anchor timestamp:
-```
-base   = isoDate if present and valid, else insertedAt
-anchor = max(base, readAt if set, unsavedAt if set)
-```
-Deleted once `now > anchor + 30 days`. So: never-read articles expire 30 days after publish; read articles get 30 days from the moment they were read (not published); an article that was saved and later unsaved gets a fresh 30-day grace period from the moment it was unsaved, regardless of how old it already was — this guarantees an accidental unsave can never delete something with zero grace period.
-
-**Trigger**: runs server-side inside `POST /api/refresh` (`server/src/routes/refresh.js`), so it fires on every manual Refresh and every auto-refresh tick, including the one that fires immediately on app mount (see Auto-refresh below). Because expired articles are actually gone, the browse list/Today/Read Articles need no extra date-range filtering. Read Later is entirely unaffected by retention, by design.
-
-## Auto-refresh
+### Auto-refresh
 
 A `useEffect` in `App.jsx` (mount-only, empty deps) calls the same `handleRefresh` the manual button uses, immediately on mount — this matters because a cold open after the tab was closed for a while would otherwise show stale data for the first interval period. It then starts a 15-minute `setInterval`. A `visibilitychange` listener **clears and recreates** the interval (not just skips ticks) on hidden/visible, so a backgrounded tab doesn't burn fetches, and becoming visible again restarts a fresh 15-minute countdown rather than resuming a possibly-already-elapsed one. Each tick is a single `POST /api/refresh` call — the server does the per-feed looping, fetching at most 10 feeds at a time (`settleWithConcurrency`) rather than all at once: harmless with a dozen subscriptions, but an OPML import can bring in hundreds, and firing every fetch (plus its DNS lookup and icon/image follow-ups) in the same instant risks timeouts and rate limits from hosts that serve many feeds.
 
@@ -153,32 +145,11 @@ A `useEffect` in `App.jsx` (mount-only, empty deps) calls the same `handleRefres
 
 **Fewer writes: one refresh at a time, and recent results reused** (`server/src/refreshCoordinator.js`, used by `routes/refresh.js`). Every refresh is a burst of database writes, and with a phone and a laptop each refreshing on page load, plus a 15-minute timer on each, the hosted service was doing the same work several times over. So: while a refresh-all is running, any other `POST /api/refresh` waits for it and returns its result instead of starting another; and if one finished less than 5 minutes ago, its result is returned without fetching anything (`skipped: true`). The state is in memory, so a cold start always refreshes. The client passes `?force=1` **only** for a click on the Refresh button (and for the refresh that follows an OPML import, whose new feeds need fetching), so a deliberate click always fetches while page loads and the timer don't. The single-feed refresh (`POST /api/feeds/:id/refresh`) is unchanged. The route also catches errors: Express 4 doesn't catch a rejected promise from an async handler, so a database error here used to be an unhandled rejection that took the whole process down (seen as 503s from Cloud Run) instead of a 500 for that one request.
 
-## Hosted durability
-
-How the hosted (Cloud Run) service keeps its data, and why it works this way. Operational detail and the recovery runbook are in `DEPLOY.md` ("Data durability" and "Recovery runbook"). All of this is off unless `FEED_READER_SNAPSHOT_BUCKET` is set, so running locally is unchanged.
-
-**The design**: SQLite runs on the container's local disk, in WAL mode, as it does locally. The Cloud Storage bucket holds whole, consistent snapshots of it, uploaded through the Cloud Storage API (`@google-cloud/storage`), never through a mounted filesystem. An object upload either fully happens or doesn't, so the bucket can never contain a half-written database, and each instance has its own private copy.
-
-- **At startup** (`restoreFromSnapshot`, before the database is opened): download the bucket's current object and run SQLite's full `integrity_check` on it. If it passes, it becomes the local database. If it fails, try older versions (bucket versioning is on), newest first, up to 20, and use the first that passes, logging at ERROR `restored from older snapshot: generation …` with what was skipped, then upload that copy over the damaged object right away. A file that is empty or has no tables counts as damaged (SQLite accepts both as valid). If the object doesn't exist, start with an empty database and say so loudly (a brand-new deployment). The server doesn't listen until this finishes, so Cloud Run's startup probe keeps traffic away.
-- **After a write** (`snapshotAfterWrites`, middleware on every non-GET request): the response is held until a snapshot containing the write has been uploaded (`db.backup()`, an online backup that is safe while the database is in use; the live file is never uploaded). Cloud Run throttles the CPU almost to zero once a response is sent, so a timer or an after-response hook can't be relied on; this is also why every write route, including `POST /api/refresh` and OPML import, goes through one middleware and not per-route code. Writes are detected with `SELECT total_changes()`, which also catches background writes, and nothing is uploaded when nothing changed. Overlapping uploads are combined: one running, one queued for everyone else, never two at once.
-- **Generation guard**: each upload is conditional on the object still being the generation this instance last saw (`ifGenerationMatch`). A mismatch means another instance wrote in between (an old revision finishing requests during a deploy overlap). **The live instance wins**: a normal flush overwrites, with a WARNING saying the other instance's recent changes are lost; the final flush at shutdown drops its own upload instead, because there the newer data belongs to the instance that's staying. Preventing the loss entirely would need a lease or lock that makes the new instance wait for the old one, which isn't worth the complexity for one user — a deploy overlap costs at most a few seconds of read/saved marks, and the guard makes that visible in the logs instead of silent.
-- **At shutdown** (SIGTERM, which Cloud Run sends about 10 s before stopping an instance): stop accepting connections, take one last snapshot (bounded to 8 s), exit. It doesn't wait for a long refresh still running; whatever it committed is already in the snapshot, and refresh is idempotent.
-- **If an upload fails**, the write's response still goes out (the change is already applied locally, and a client retrying a toggle such as "save" would undo it), the failure is logged at ERROR, and the next flush retries. So the invariant "once the client sees success, the change is in the bucket" holds except while the bucket is unreachable.
-- **It never starts empty by accident.** Any failure to look at the bucket (network, permissions) or to find an intact snapshot exits non-zero. A wrong bucket name does too: Cloud Storage answers 404 for both a missing object and a missing bucket, so on a 404 the adapter checks the bucket exists before treating it as "no snapshot yet". Starting empty and then uploading would replace the real data at the first write (versioning would make that recoverable, but it is the worst way this design can fail).
-
-**Measured** (a laptop talking to a us-west1 bucket, then the live service): a write takes about 140 ms longer than without snapshots (median, 8 writes: 140 ms vs 1 ms); a cold start restores in about a second; a refresh of all 17 feeds took 1.7 s, where under the old mounted-bucket setup refreshes were hitting Cloud Run's 300 s request timeout.
-
-**Why this exists (Oct 2026)**: the first hosted version ran SQLite directly on a Cloud Storage FUSE mount in `DELETE` journal mode. Cloud Storage can't modify part of an object, so every SQLite commit re-uploaded the whole file (839 object versions in a few days, in bursts of dozens per second), with no real file locking. On Oct 7 the database was corrupted: the primary-key index stopped matching the articles table (so 254 article ids were stored twice) and the last write left the table itself damaged. The likely causes are an interrupted write (refreshes were timing out at 300 s mid-write) or an old and a new revision both writing during a deploy; it isn't proven. The error the app showed ("couldn't reach the server") was misleading — the server was up and returning 500s — which is why server errors and network failures now have separate messages. Recovery is written up in DEPLOY.md's runbook.
-
-**Alternatives considered**: keep the FUSE mount and tune it (the failure modes come from SQLite-over-FUSE itself); more instances (worse: more uncoordinated writers); **Litestream** (ships only the changes and gives point-in-time history, but it's a second process in the container and, with request-based CPU billing, would mostly rely on a final flush at shutdown anyway — no real advantage at 2 MB; it's the next step if the database grows); Firestore or Cloud SQL (removes this whole class of problem but means rewriting the data layer, and Cloud SQL has a monthly cost); a VM with a persistent disk (SQLite just works, but IAP on a VM needs a load balancer, which costs far more than the app). The choice of `@google-cloud/storage` over plain `fetch` against the JSON API is deliberate: it handles credentials from Cloud Run's metadata server, retries and generation preconditions, which would otherwise be hand-maintained; it's a dependency, but within the same Google Cloud project that already hosts the app, so the "no third-party services" principle isn't affected.
-
-**Growth path**: now, local SQLite plus whole-file snapshots (good to a few tens of MB and one user). At roughly 50–100 MB, when cold starts and upload time become noticeable, move the snapshot module to Litestream. Beyond one user or one instance it's a redesign anyway (accounts, per-user data): a managed database (Cloud SQL Postgres or Firestore) and a scheduled server-side refresh instead of refreshing on page load. The local disk on Cloud Run is memory-backed, so the database counts against the instance's memory limit (512 MiB by default); fine at a few MB.
-
-## Export & Import (OPML)
+### Export & Import (OPML)
 
 Client-side only (`web/src/data/opml.js`'s `buildOPML(categories, feeds)`, a pure XML-string function with `escapeXml` for `&`/`<`/`>`/`"`), unaffected by the storage migration since it only ever operates on already-loaded `categories`/`feeds` arrays. "Export OPML" button sits in the sidebar directly below "+ Add Category". Categories become `<outline text="Name">` wrappers containing one `<outline type="rss" text="FeedTitle" xmlUrl="FeedURL"/>` per feed. (The code still has a fallback path emitting an uncategorized feed as a top-level outline with no wrapper, from when that was possible — see Sidebar below — but every feed has a category now, so it's unreachable through normal use.) Subscriptions only — read/saved/timestamps/order don't survive an export. **Import** is described below.
 
-### Import
+#### Import
 
 **Import OPML** and **Export OPML** share one row in the Customization card, split down the middle by a hairline (`.sidebar-card-row-split`, two `.sidebar-card-half` buttons) rather than stacked — the two are a natural pair (get subscriptions out, get them back in) and sit at the same visual weight. Import is a hidden `<input type="file">` behind its half of the row (`.opml`/`.xml`). OPML is the only file format the app reads or writes — it's the interchange format every other reader (Feedly, Inoreader, NetNewsWire, …) exports — and the only feed formats parsed are RSS and Atom.
 
@@ -193,7 +164,7 @@ The work is split where the existing rules already live. **In the browser**, `pa
 
 Afterwards the client reloads (new categories and feeds appear), starts a normal refresh-all in the background so their articles load — not awaited, since a big list takes a while, and per-feed failures surface in the existing refresh error banner — and shows a blocking `window.alert` summary, the same channel the app already uses for validation messages: how many feeds and categories were added, how many were skipped as duplicates, and the first five invalid entries (with a "…and N more"). A file with no feeds in it, or that isn't OPML, produces an alert instead of an import. Import is additive only; it never deletes or edits an existing feed.
 
-## Sidebar (top to bottom)
+### Sidebar (top to bottom)
 
 1. **All Feeds** — clears any category/feed selection and switches to the plain unread browse list (what the removed "All" tab used to show).
 2. **Today** — a digest, not a filter combinable with a category/feed selection (see Today below for details).
@@ -214,7 +185,7 @@ Every feed must belong to a real category — there is no "Uncategorized" concep
 
 Both category and feed rename/create actions validate uniqueness (name, and — for feeds — normalized URL) and the reserved name, surfacing violations via a blocking `window.alert` fed by the API's `400 { error }` responses. Deletions require `window.confirm`.
 
-## Today
+### Today
 
 A digest rather than a filtered list: unread articles published today (bounded by local-timezone midnight on the article's `isoDate`; an article with a missing/unparseable `isoDate` never appears here), grouped by category (`App.jsx`'s `todayGroups`, rendered by `TodayDigest.jsx`):
 - Named categories are sorted alphabetically. The grouping code still has a fallback "Uncategorized" group it would append last if it ever found a feed with no category, but since every feed now must have one (see Sidebar/Data Model above), that group is unreachable through normal use — dead code kept as a harmless defensive fallback rather than actively relied on.
@@ -222,7 +193,7 @@ A digest rather than a filtered list: unread articles published today (bounded b
 - Each named category's heading is a button that jumps straight into that category's normal full unread list (exiting Today).
 - Ranking is by recency, not popularity — RSS feeds carry no click/pageview data, and there's no reliable free source for a link's real internet-wide "hits."
 
-## Main content area (top bar + article list)
+### Main content area (top bar + article list)
 
 **Top bar**, left to right:
 - Search input — a text field on the left that filters across all stored articles (including already-read ones) in real time as you type, matching against `title` and `contentSnippet` (the snippet/description shown below the title in each row). When a query is active it overrides the active sidebar selection entirely — Today, category, feed, Read Later, etc. — and shows a flat date-grouped list of every matching article across all feeds, sorted by the current sort direction. Clearing the field (Escape key or the native × button) returns to whatever view was showing before. Implemented as a client-side `useMemo` filter over the already-loaded `articles` array — no new API endpoint or backend change needed, since all articles are already in memory.
@@ -239,7 +210,7 @@ There are no view tabs in the top bar — Today, Read Later, and Read Articles a
 
 **A just-read or just-un-saved article lingers in place, greyed out, instead of vanishing immediately** (`App.jsx`): clicking a title marks it read right away — the sidebar's unread count drops immediately, it lands in Read Articles immediately, and its row picks up the existing muted `.article-item.read` title style — but the row itself stays exactly where it was in the browse list/Today digest **for as long as you keep looking at that same screen**. It only actually drops out once you either explicitly refresh, or navigate to a different destination/category/feed and come back — giving you a moment to reconsider before it's gone, without lingering forever once you've genuinely moved on. Un-saving from Read Later works the same way (loses its accent bar and shows ☆, but stays put). Mechanically, a `snapshot` (`id → { read, saved }`) backstops each list's live filter with an OR: an article counts as still-unread (or still-saved) if it's *live* that way, or if the snapshot says it *was* — so a live change alone can't remove it, only a fresh snapshot can. The snapshot moves in two different ways: an **explicit refresh** (the Refresh button, or this mount's own initial load) re-baselines it from freshly-fetched server data — the 15-minute background auto-refresh (see Auto-refresh below) deliberately does **not** count, so it can still add newly-published articles without silently pruning rows you're already looking at; separately, **changing `view`/`selectedCategoryId`/`selectedFeedId`** (switching screens) also re-syncs the snapshot, but cheaply, straight from whatever `articles` already holds client-side — no network round-trip needed, since navigating away and back is itself a clear enough sign that you've moved on.
 
-## Appearance (light / dark)
+### Appearance (light / dark)
 
 The app supports both light and dark, and by default **follows the OS/browser appearance** (`prefers-color-scheme`). A **System / Light / Dark** segmented control at the bottom of the sidebar (below "Export OPML") lets you override that:
 - **System** (default) tracks the OS automatically; **Light** / **Dark** force that appearance regardless of the OS.
@@ -247,7 +218,7 @@ The app supports both light and dark, and by default **follows the OS/browser ap
 
 **Implementation**: colors are CSS custom properties defined once in `web/src/index.css` using the `light-dark()` function, with `color-scheme` driving which half each token resolves to. "System" leaves `color-scheme: light dark` (OS decides); forcing a mode sets a `data-theme` attribute on `<html>` that overrides `color-scheme` to `light` or `dark`. Because every token is a `light-dark()` pair, flipping appearance is a single `color-scheme` change — there's no duplicated dark-mode token block to keep in sync. The control itself exposes `aria-pressed` per option; full dark mode is treated as an accessibility/eye-comfort feature, not just aesthetics.
 
-## Visual design ("Console")
+### Visual design ("Console")
 
 The current visual identity is deliberately dense and focused rather than card-heavy — closer to Linear/Arc than to a typical "cards with shadows" feed reader. It was chosen from three prototyped directions (a from-scratch design-comparison artifact built with the app's own real content) — the other two (a softer Apple-materials look, and a serif-headline editorial layout) were rejected in favor of this one; see Design decisions.
 
@@ -257,7 +228,7 @@ The current visual identity is deliberately dense and focused rather than card-h
 - **Progressive disclosure of the save toggle**: the ★/☆ button is invisible at rest on pointer devices and appears on row hover or keyboard focus (always visible once an article is saved, and always visible on touch, since there's no hover to reveal it there).
 - **Refresh is visually primary** — the only accent-filled button in the top bar, since it's the one action most likely to be reached for repeatedly.
 
-## Design decisions worth knowing
+### Design decisions worth knowing
 
 A condensed record of the decisions that shaped the app and the reasoning behind them. The full chronological history is in the git log.
 
@@ -307,26 +278,165 @@ A condensed record of the decisions that shaped the app and the reasoning behind
 **Testing**
 - Logic that touches the database was split out of `db.js` (which opens the real database on import) into `dbHelpers.js` (pure) and `dbLogic.js` (`createDb(db)` factory), so it can run against throwaway in-memory databases using Node's built-in test runner with no extra dependencies. Network code is tested by mocking `fetch`. See Testing.
 
-## Known gaps / not implemented
+## 3. Data model / schema
 
-Missing pieces of work within the app's already-decided scope and design — not wishlist items still under consideration (see Future enhancements below for those). Ordered roughly from least to most work it'd actually take to close, not by importance.
+| Entity | Fields (name: type) | Constraints and invariants |
+|---|---|---|
+| `categories` | `id`, `name`, `order` (REAL) | `name` unique, case-insensitive, trimmed; "Uncategorized" reserved |
+| `feeds` | `id`, `url`, `categoryId`, `title`, `feedImageUrl`, `siteUrl`, `iconCheckedAt`, `order` (REAL) | normalized `url` globally unique; `categoryId` always a real category; `title` unique per category |
+| `articles` | `id` (TEXT), `feedId`, `title`, `link`, `isoDate`, `insertedAt`, `contentSnippet`, `imageUrl`, `ogImageChecked`, `read`, `readAt`, `saved`, `unsavedAt` | `id` = `feedId::guid-or-link` (trailing `#fragment` stripped); `feedId` cascades on delete; saved articles never purged |
 
-**Medium** — a small, self-contained feature, not just a tweak:
-- **Mark all as read** — close to a simple batch update; not yet decided on or built. (Unread/saved counts *are* now implemented — see Sidebar.)
+Rules that must always hold (the exact wording is in Data Model below):
+- Every feed belongs to a real category, enforced server-side by `requireCategory`; a category with feeds in it can't be deleted.
+- Feed URLs are unique after normalization; category names are unique case-insensitively; feed titles are unique per category.
+- Refresh never overwrites an existing article's `read`/`readAt`/`saved`/`unsavedAt`; only a missing `imageUrl` is filled in.
+- Schema changes go through `PRAGMA user_version` migrations that are append-only and idempotent (see Migrations).
+- Retention: articles are deleted 30 days after the anchor timestamp; saved articles are exempt (see Retention & Purge).
 
-**Larger** — needs a design decision or real architecture before it's just "write the code":
-- Hosted deployment: a `Dockerfile` and `DEPLOY.md` cover Cloud Run (SQLite on the container's local disk with snapshots to a Cloud Storage bucket, single instance, IAP for access). Feeds whose sites block cloud IPs fail there unless they have a fallback (one site does, see Architecture). There's still no process-manager config or HTTPS setup for self-hosting outside Cloud Run, and background refresh isn't server-side (refresh is client-driven, so feeds only update while a tab is open).
+### Data Directory
 
-## Future enhancements
+`feed-reader.db` lives outside the project/install directory entirely, so updating or reinstalling the code never touches your data — the same reasoning real desktop apps use (e.g. macOS keeps app data in `~/Library/Application Support/`, not inside the `.app` bundle). Computed once in `server/src/dataDir.js`, in priority order:
 
-Features that are wanted in some form but not yet decided on or committed to the current design — distinct from Known Gaps above, which are missing pieces of already-committed scope. No timeline or priority implied by the order below.
+1. `FEED_READER_DATA_DIR` environment variable, if set — an explicit override for anyone who wants the file somewhere specific (a synced folder, an external drive, etc). The Docker image sets it to `/data`, a plain local folder inside the container; in the hosted setup it holds the working copy of the database and the bucket holds snapshots of it (see Hosted durability).
+2. Otherwise, an OS-appropriate default: `~/Library/Application Support/Feed Reader` on macOS, `%APPDATA%/Feed Reader` on Windows, `$XDG_DATA_HOME/feed-reader` (or `~/.local/share/feed-reader`) on Linux.
 
-- **Search for feeds by keyword ("find me cricket feeds") — deliberately not implemented, because it would require a third-party service.** This app's founding constraint is *no third-party services* (see the intro and README): everything it fetches comes from the publishers' own sites, nothing goes through anyone else's servers, and nothing about what you read or look for leaves your machine. Finding feeds *by topic or name* needs a searchable index of feeds, and RSS itself has no directory or search mechanism — so any implementation has to lean on someone else's service: a web search engine (needs an API key or paid tier, or scraping against its terms — and its results are web pages, not feeds, so a second step would still be needed to extract the feed from each one), or a feed-directory service such as Feedly's (to our knowledge only unofficial, undocumented endpoints exist for this, with no guarantee they stay available). Either one would (1) stop working whenever that provider changes or withdraws it, (2) put a log of your interests in a third party's hands — the opposite of "no tracking", and (3) bring API-key management with it. It's the same trade-off that ruled out popularity-based Today ranking (see Design decisions). Not ruled out: a **curated directory bundled in the repo** (no runtime dependency, but it only covers what someone curates and goes stale). Also a separate question, still open and needing no third party: **discovering a feed from a site URL you already have** (read the page's `<link rel="alternate" type="application/rss+xml">` tags, fetched through `safeFetch`) — that fixes "pasted a homepage instead of a feed URL" without any index.
-- **Alerting on the hosted service** — deliberately not set up for now (there is one user). A log-based alert in Cloud Monitoring on `severity>=ERROR` lines containing "malformed" or "restored from older snapshot", and on 5xx responses for `/api/*`, sent to an email channel. The reason to revisit: the Oct 2026 outage had a warning two days earlier (one "malformed" error on Oct 5) that nobody saw. Until then, look at the logs with the commands in DEPLOY.md's recovery runbook whenever something seems off.
-- **Keyboard shortcuts** — considered, not yet decided on; needs an actual shortcut scheme designed first.
-- **One automatic retry on an empty refresh response** — raised by a one-off refresh failure that turned out to be a transient empty body from the site's own CDN (see Design decisions), not a bug here. Not implemented since a single occurrence isn't evidence of a pattern worth the extra complexity; worth adding if it recurs, for this feed or others.
+**One-time migration**: earlier versions stored the database inside the project directory (`server/data/feed-reader.db`). On startup, if nothing exists yet at the new location but the old file does, `dataDir.js` moves it (and its `-wal`/`-shm` SQLite sidecar files, which can hold not-yet-checkpointed writes) to the new location automatically, logging what it did — existing subscriptions and read/saved state survive the upgrade untouched. This is a one-shot check (skipped once a file exists at the new location), not an ongoing sync.
 
-## Testing
+**Journal mode**: `db.js` uses SQLite's WAL mode everywhere, including the hosted setup, since the database is now on the container's local disk. `SQLITE_JOURNAL_MODE` remains as an override (validated against SQLite's modes) for anyone who puts the file on a network or FUSE filesystem, which can't provide the shared memory WAL needs — but that is the setup that corrupted the hosted database once (see Hosted durability), so don't.
+
+### Migrations
+
+Schema and one-time data changes are tracked with SQLite's built-in `PRAGMA user_version` — a single integer stored in the database file's own header, which is exactly what it's for, so no extra table or dependency is needed. `server/src/migrations.js` holds an ordered list of `{ version, name, run(db) }` migrations; `runMigrations(db)` (called once from `db.js`, right after opening the connection) reads the stored version, runs only the migrations numbered higher than it, in order, and bumps the version after each one succeeds — each inside its own transaction, so a failure leaves the database at its last-known-good version rather than half-applied.
+
+There's deliberately no rollback tooling — a migration that throws crashes the app on startup rather than silently continuing against a schema the code doesn't expect, and for a single-user local tool, backing up the database file first (already this project's practice before anything risky— see Design decisions) is the accepted substitute for real rollback support. A full framework (Prisma/Knex-style, with rollback and branching) would be solving for a multi-environment risk profile this app doesn't have.
+
+Every migration is also internally idempotent (checks before altering) even though the version tracker alone would normally make that redundant — this system was retrofitted onto a database that had already picked up some of its changes via older, ad-hoc guards before `migrations.js` existed (its `user_version` started at 0 even though migrations 1 and 2 had, in substance, already happened), so each one has to be safe to run again as a no-op. Adding a new migration means appending a new entry with the next version number; existing entries should never be edited once shipped, only appended after.
+
+### Data Model (SQLite)
+
+**`categories`** — `{ id, name, order }`
+- `name` must be unique, case-insensitive, trimmed.
+- `"Uncategorized"` (any case) is reserved — cannot be used as a real category name.
+- `order` is a `REAL` column, auto-managed (see Ordering below); `NOT NULL` from creation, so — unlike the original IndexedDB version — there's no missing-value healing to worry about on read.
+
+**`feeds`** — `{ id, url, categoryId, title, feedImageUrl, siteUrl, iconCheckedAt, order }`
+- `categoryId` is always a real category id — every feed must belong to one (see Sidebar below for why "Uncategorized" was removed as a concept entirely). `addFeed`/`updateFeedCategory` both reject a missing or nonexistent `categoryId` (`requireCategory` in `dbLogic.js`), and `deleteCategory` refuses to delete a category that still has feeds in it (`"<name>" still has feeds in it — move or delete them first.`) rather than orphaning them. The column keeps `ON DELETE SET NULL` on its foreign key purely as a defense-in-depth fallback — through normal app use, that path should never actually fire.
+- `title` starts out equal to `url` at creation time (a placeholder) and is overwritten with the feed's real title **only on the very first successful refresh** (while `title` still equals `url`) via `syncFeedMetadata` — every subsequent refresh leaves `title` alone, so neither the auto-synced title nor a later manual rename is ever silently reverted by a refresh.
+- `siteUrl` is the feed's real homepage (parsed from the RSS `<link>` element, e.g. `https://www.example.com/sport` — often a different host than the feed URL itself, e.g. `feeds.example.com`). Re-synced on every refresh; exists purely so `faviconResolver.js` has something reliable to fetch (see Feed Icons below).
+- `feedImageUrl` (the icon shown in the sidebar and next to every article from that feed — see Feed Icons below) is **not** unconditionally re-synced like it used to be, since discovery involves fetching the feed's homepage — not something to redo on literally every refresh. `refreshFeed.js` runs discovery (and so only touches `feedImageUrl`) on a feed's first sync, and periodically thereafter — see `iconCheckedAt` below and `shouldDiscoverIcon` under Feed Icons.
+- `iconCheckedAt` records when icon discovery was last *attempted* for this feed (success or failure), regardless of whether it found anything. `shouldDiscoverIcon` (see Feed Icons) uses it to gate re-discovery to roughly once every 30 days per feed instead of on every refresh, so an already-populated icon can still automatically pick up a later improvement to `faviconResolver.js` or a site's own icon change — without anyone needing to notice and re-run a one-off script.
+- If the title being auto-synced on that first refresh would collide with another feed's title already in the same category bucket (two different feeds can legitimately share a real-world title, e.g. two editions of the same publication), it's automatically disambiguated with a `" (2)"`, `" (3)"`, etc. suffix (`uniqueTitleInBucket` in `dbHelpers.js`) rather than silently producing two identically-named feeds.
+- `title` uniqueness is otherwise enforced **per category/bucket only** (two feeds can share a name if they're in different categories), and explicitly on user-driven rename (`renameFeed` throws on a collision) — the auto-sync path above uses disambiguation instead of throwing, since there's no user present to show an error to.
+- **`url` (normalized) must be globally unique across all feeds, regardless of category.** Normalization (`normalizeFeedUrl` in `dbHelpers.js`): lowercases the host, treats `http`/`https` as equivalent, strips one trailing slash from the path. Deliberately does **not** lowercase the path or touch the query string (some feeds legitimately depend on `?format=rss`-style params) — so `www.` vs. bare domain, or a differing query string, are treated as genuinely different feeds and allowed through. Violating this throws `"This feed URL has already been added."`, caught in `Sidebar.jsx` and shown via `window.alert`.
+- `order` is scoped per bucket (per `categoryId`); values may overlap numerically across different buckets since they're never compared cross-bucket.
+
+**`articles`** — `{ id, feedId, title, link, isoDate, insertedAt, contentSnippet, imageUrl, ogImageChecked, read, readAt, saved, unsavedAt }`
+- `id` = `` `${feedId}::${guid || link}` `` (a `TEXT PRIMARY KEY`, not an autoincrement number) — this is what makes refresh idempotent, and it's also used directly as the React list key and click-handler argument on the frontend, so it must stay a string. `guid` has any trailing `#fragment` stripped before use (`feedParser.js`) — some feeds reuse the same guid for a live-updated article but append an incrementing revision fragment each time it's edited (`...#0`, then `...#8`), which would otherwise make every edit look like a brand-new article. This only affects the identity/guid, never the `link` field itself, since some sites legitimately depend on a real fragment there for deep-linking.
+- `insertedAt` is set once, at first insert — a fallback anchor for the retention rule below when `isoDate` is missing/unparseable.
+- `readAt` is set the moment `read` flips `false → true` (i.e. on click-to-open; there's no separate "mark read" affordance, and no "mark unread" UI either, so the reverse transition never currently happens).
+- `unsavedAt` is set the moment `saved` flips `true → false`.
+- Refreshing a feed (`upsertArticles`) never overwrites an existing article — `read`/`readAt`/`saved`/`unsavedAt`/`imageUrl`/`ogImageChecked` are preserved permanently across refreshes; only genuinely new guids get inserted. `ogImageChecked` records when the background OG-image fetch was last attempted for this article (success or failure) — `NULL` means not yet attempted. The one exception to `imageUrl` being permanent: it is cleared when the feed is detected as icon-only (`clearArticleImagesForFeed`, on refresh) and by the feed-wide-image / tracking-pixel cleanup migrations — see Per-article images.
+- `feedId` has `ON DELETE CASCADE` — deleting a feed automatically deletes all of its articles via the foreign key.
+
+#### Ordering (categories and feeds)
+
+There is currently **no manual drag-to-reorder and no sort buttons** anywhere in the UI (both were built, then intentionally removed— see Design decisions below). Ordering is fully automatic:
+- On **create**: new item is inserted at the alphabetically-correct position relative to the current order (not a full re-sort of everyone else).
+- On **rename**: the renamed item is repositioned alphabetically among its current siblings (again, not a full re-sort).
+- Moving a feed to a different category (drag-and-drop) **appends it to the end** of the new bucket — it is not re-alphabetized into its new home.
+- A periodic "normalize" pass squashes fractional order values back down to clean sequential integers after each mutation, wrapped in a `db.transaction(...)` so it's all-or-nothing.
+
+### Retention & Purge
+
+Storage is bounded by actually deleting articles (not a view-level filter), via `purgeExpiredArticles(db)` in `server/src/retention.js` — wrapped by `dbLogic.js`'s `createDb(db)` factory with its `db` argument already bound, so existing callers (a plain `purgeExpiredArticles()`, no args) are unaffected. **Saved articles (`saved === true`) are always exempt**, regardless of age.
+
+For every non-saved article, compute an anchor timestamp:
+```
+base   = isoDate if present and valid, else insertedAt
+anchor = max(base, readAt if set, unsavedAt if set)
+```
+Deleted once `now > anchor + 30 days`. So: never-read articles expire 30 days after publish; read articles get 30 days from the moment they were read (not published); an article that was saved and later unsaved gets a fresh 30-day grace period from the moment it was unsaved, regardless of how old it already was — this guarantees an accidental unsave can never delete something with zero grace period.
+
+**Trigger**: runs server-side inside `POST /api/refresh` (`server/src/routes/refresh.js`), so it fires on every manual Refresh and every auto-refresh tick, including the one that fires immediately on app mount (see Auto-refresh below). Because expired articles are actually gone, the browse list/Today/Read Articles need no extra date-range filtering. Read Later is entirely unaffected by retention, by design.
+
+## 4. Interface contracts
+
+The HTTP API is the boundary between `web/` and `server/`; the other boundaries are described in the sections they belong to (outbound fetches in Architecture, `safeFetch.js`; the snapshot store in Hosted durability; OPML import in Export & Import (OPML)). The API's table, error shape and who may call it:
+
+- **Errors it can raise:** validation errors respond `400 { error }`; server faults respond `500`, and a rejected async handler is caught in `POST /api/refresh` (see Auto-refresh).
+- **Who may call / mutate:** the Host header must be `localhost`, `127.0.0.1` or `[::1]` (extended by `ALLOWED_HOSTS`), and the two refresh routes need an `X-Feed-Reader: 1` header (see Running it).
+
+### API
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/api/categories` | — | array of categories |
+| POST | `/api/categories` | `{ name }` | `{ id }` |
+| PATCH | `/api/categories/:id` | `{ name }` | 204 |
+| DELETE | `/api/categories/:id` | — | 204 |
+| GET | `/api/feeds` | — | array of feeds |
+| POST | `/api/feeds` | `{ url, categoryId }` | `{ id }` |
+| PATCH | `/api/feeds/:id` | `{ title }` | 204 |
+| PATCH | `/api/feeds/:id/category` | `{ categoryId }` | 204 |
+| DELETE | `/api/feeds/:id` | — | 204 |
+| POST | `/api/feeds/:id/refresh` | — | `{ title, feedImageUrl, link, items }` |
+| GET | `/api/articles` | — | array of articles |
+| PATCH | `/api/articles/:id/read` | `{ read }` | `{ readAt }` |
+| PATCH | `/api/articles/:id/saved` | — | `{ saved }` |
+| POST | `/api/refresh` | — | `{ count, errors }` |
+| POST | `/api/import` | `{ outlines }` | `{ feedsAdded, categoriesCreated, duplicates, invalid }` |
+
+Validation errors (duplicate/reserved category name, duplicate feed URL, duplicate manually-renamed feed title) respond `400 { error: "message" }`, using the same message text the app has always shown; `web/src/data/db.js` throws `Error(body.error)` on any non-OK response so the existing `window.alert`-on-catch handling in `Sidebar.jsx` keeps working unchanged.
+
+`POST /api/refresh` (hit by both the manual Refresh button and the auto-refresh timer) and `POST /api/feeds/:id/refresh` (hit right after adding a feed) do the entire fetch-and-persist cycle server-side — the browser no longer orchestrates a per-feed loop itself, since both the fetching and the storage now live on the server anyway.
+
+## 5. Error handling and edge cases
+
+A summary; each row points at the section that specifies it and the test file that covers it (section 7 for the server, section 6 for the browser).
+
+| Scenario | Expected behavior | Detected how | Covered by test (ID) |
+|---|---|---|---|
+| Dependency is down (bucket unreachable at startup) | Server exits non-zero rather than start empty (Hosted durability) | `restoreFromSnapshot` failure | `snapshot.test.js` |
+| Dependency is down (bucket unreachable on a write) | Response still goes out, ERROR logged, next flush retries | upload rejection | `snapshot.test.js` |
+| Dependency is down (a feed site) | Refresh reports the error; a feed that fails on its initial add is kept | `errors` in the refresh response | (no dedicated test listed in Testing) |
+| Dependency is down (server returns 5xx vs. network down) | Two different messages (Design decisions, Behavior and UI) | HTTP status on the thrown error | `shared.spec.js` |
+| Input is malformed or empty (feed URL not http/https) | `addFeed` rejects with a clear message | `feedUrlProblem` | `db.test.js`, `importOpml.test.js` |
+| Input is malformed or empty (OPML file) | Alert instead of an import; junk field types tolerated | `parseOPML`, `planOpmlImport` | `opmlImport.test.js` |
+| Input is malformed or empty (snapshot is empty or has no tables) | Counts as damaged; an older version is tried | `integrity_check` plus the table check | `snapshot.test.js` |
+| Limits hit (feed, homepage, icon size) | Body streams are capped at 5 MB, 2 MB and 5 MB (Architecture, Bounded parsing of remote content) | `readTextCapped`, `readArrayBufferCapped` | (not separately listed in Testing) |
+| Limits hit (OPML) | More than 5000 entries, folders nested over 10 deep, URLs over 2048 characters are rejected | `planOpmlImport` | `opmlImport.test.js` |
+| Limits hit (hostile content) | `stripHtml.js` keeps parsing linear; startup throws if rss-parser's internal goes missing | differential test against the original | (see Architecture) |
+| Limits hit (private or redirected address) | Non-public targets refused on every redirect hop, up to 5 | `safeFetch.js` | (not separately listed in Testing) |
+| Partial failure / retry (refresh overlaps) | Overlapping refreshes share one run; a failed refresh isn't remembered | `refreshCoordinator.js` | `refreshCoordinator.test.js` |
+| Partial failure / retry (import fault mid-way) | The whole import rolls back | one transaction | `importOpml.test.js` |
+| Partial failure / retry (migration throws) | App crashes on startup; the database stays at its last good version | per-migration transaction | (rollback isn't separately listed in Testing; `dedupe.test.js` and the clear-* tests cover individual migrations) |
+| Partial failure / retry (two instances write) | The live instance wins; shutdown flush drops its upload | `ifGenerationMatch` (412) | `snapshot.test.js` |
+
+## 6. Integration tests
+
+The browser-level suite below runs the real built app against the real server and a throwaway database. The server-side tests that cross component boundaries (`db.test.js`, `importOpml.test.js`, `snapshot.test.js`) are described under Unit tests, in the order the original spec lists them.
+
+- [x] IT-1: Frontend end-to-end tests (desktop, mobile and both) — see below.
+- [x] IT-2: Does this feature still work when the other existing features are active? The suite shares one database across all 44 tests, so features run together.
+
+### Frontend end-to-end tests
+
+`web/e2e/` (Playwright, `npm run test:e2e` from `web/`). A real Chromium against the real built app and server, with a throwaway database: `web/e2e/seed.mjs` wipes `web/e2e/.data`, runs the server's own migrations, and seeds three categories, three feeds and 140 articles (130 in one feed, so the 100-row render window is exercised). The suite never touches the network or a real database: the fixtures abort every non-local request and stub the two refresh endpoints (the app refreshes on every load). Run through `playwright.config.js` on port 3101.
+
+Why a real browser rather than a jsdom setup: the bugs this app is exposed to are CSS and media-query behavior (`hover: hover` vs `hover: none`, the 768px drawer breakpoint, `pointer: coarse` sizing). jsdom renders no CSS, so it can't see them. This was prompted by a real regression — a mangled CSS rule hid the selected category's pencil on touch screens through a deploy and a merge, and nothing caught it.
+
+Two projects share one server: `desktop` (Chrome, 1280x800, mouse) and `mobile` (Chromium with the Pixel 7 profile: touch, no hover). `desktop.spec.js` and `mobile.spec.js` run in one project each; `shared.spec.js` runs in both. 44 tests in all (desktop-only, mobile-only and shared; shared ones run in both projects):
+- **desktop** — sidebar always visible with no menu button; clicking a category's name or the empty part of its row selects it without expanding; the pencil and chevron are hidden at rest, appear on hover tight after the name in the order name, pencil, chevron; the chevron expands/collapses even a category that isn't selected (and doesn't select it); the pencil opens the editor without selecting or expanding; a feed's pencil appears on hover right after its name; compact one-line rows.
+- **mobile** — drawer closed at load with articles on screen; closes on backdrop, Escape and the close button; choosing any destination (even the active one) closes it; tapping a category selects without expanding and keeps the drawer open; only the selected category shows a pencil and chevron, 44px tall, narrow, touching each other and the name; the chevron expands/collapses; tapping a feed closes the drawer and only the selected feed shows a pencil; compact stacked rows with a 44px star; tapping a row opens the article and marks it read; tapping the star saves without opening it.
+- **both** — no script errors on load; a 500 from `/api/articles` shows the server-error message while an aborted request still says it couldn't reach the server, and a 503 during refresh is reported as a server error; page load refreshes without `force` while a click on Refresh sends `?force=1`; Add feed defaults its category to the selected one; Add category / Add feed highlight while their form is open and swap; adding a category works; the four Customization buttons match the appearance control's radius, weight, font size and height; forcing Light/Dark updates both `theme-color` metas and System restores them; All Feeds renders 100 rows and grows on "Show more"; images are lazy and rows show feed icons, not photos.
+
+Tests share one database, so they use unique names and avoid asserting exact totals that other tests can change (`Add category` adds one that persists for the run). To confirm the suite actually catches regressions, the original pencil bug was reintroduced temporarily: three mobile tests failed.
+
+CI (`.github/workflows/ci.yml`) installs Chromium and runs this suite after the backend tests and frontend lint/build; on failure it uploads the HTML report and traces as an artifact.
+
+## 7. Unit tests
+
+- [x] UT-1: The server test suite below (`server/test/`, `npm test`). The original spec called this whole area "Testing"; where the text says "see Testing" it means this section together with section 6.
 
 `server/test/` (Node's built-in test runner — `npm test` from `server/`, i.e. `node --test test/*.test.js`; no new dependency). Deliberately scoped to the areas of the codebase where a bug wouldn't be obvious — logic that can silently regress without ever throwing, as opposed to something that would just crash or 404 immediately. A smoke test ("does the server start, does `GET /api/categories` return 200") wouldn't catch any of it, since the app keeps running and returning success the whole time it's quietly doing the wrong thing.
 
@@ -352,22 +462,55 @@ Built in phases, not all at once, in order of how much damage a regression would
 
 **How it stays testable**: none of `retention.js`, `migrations.js`, `dbHelpers.js`, `dbLogic.js`, `feedWideImage.js`, `trackingPixel.js`, `opmlImport.js`, `settleWithConcurrency.js`, `espnNews.js`, or `faviconResolver.js` open a database connection (or, for the last one, make a real network call) at module scope — unlike `db.js`, which opens the real database as a side effect of being imported. `dbLogic.js`'s `createDb(db)` factory is the key piece for the business-rule tests: it takes the connection as a parameter instead of closing over a module-level one, so `db.js` just calls it once against the real connection and re-exports the result, while tests call it again against a throwaway one. `test/helpers.js` bootstraps that throwaway database through the actual migration pipeline (`runMigrations`) rather than a hand-copied schema, so tests exercise the real current schema and can't silently drift from it. `migrations.js` exports its `MIGRATIONS` array (found by `name`, not index) so a test can invoke one migration's `run(db)` directly, and `faviconResolver.js` exports `extractIconCandidates` so its ranking can be checked without touching the network-dependent half at all.
 
-### Frontend end-to-end tests
 
-`web/e2e/` (Playwright, `npm run test:e2e` from `web/`). A real Chromium against the real built app and server, with a throwaway database: `web/e2e/seed.mjs` wipes `web/e2e/.data`, runs the server's own migrations, and seeds three categories, three feeds and 140 articles (130 in one feed, so the 100-row render window is exercised). The suite never touches the network or a real database: the fixtures abort every non-local request and stub the two refresh endpoints (the app refreshes on every load). Run through `playwright.config.js` on port 3101.
+## 8. Dependencies
 
-Why a real browser rather than a jsdom setup: the bugs this app is exposed to are CSS and media-query behavior (`hover: hover` vs `hover: none`, the 768px drawer breakpoint, `pointer: coarse` sizing). jsdom renders no CSS, so it can't see them. This was prompted by a real regression — a mangled CSS rule hid the selected category's pencil on touch screens through a deploy and a merge, and nothing caught it.
+Versions below are the ones pinned in `server/package-lock.json` and `web/package-lock.json`; `package.json` itself declares `^` ranges. Taken on 2026-10-10 from the lockfiles. The original spec did not list dependencies in one place; the "why" column is drawn from what it says elsewhere.
 
-Two projects share one server: `desktop` (Chrome, 1280x800, mouse) and `mobile` (Chromium with the Pixel 7 profile: touch, no hover). `desktop.spec.js` and `mobile.spec.js` run in one project each; `shared.spec.js` runs in both. 44 tests in all (desktop-only, mobile-only and shared; shared ones run in both projects):
-- **desktop** — sidebar always visible with no menu button; clicking a category's name or the empty part of its row selects it without expanding; the pencil and chevron are hidden at rest, appear on hover tight after the name in the order name, pencil, chevron; the chevron expands/collapses even a category that isn't selected (and doesn't select it); the pencil opens the editor without selecting or expanding; a feed's pencil appears on hover right after its name; compact one-line rows.
-- **mobile** — drawer closed at load with articles on screen; closes on backdrop, Escape and the close button; choosing any destination (even the active one) closes it; tapping a category selects without expanding and keeps the drawer open; only the selected category shows a pencil and chevron, 44px tall, narrow, touching each other and the name; the chevron expands/collapses; tapping a feed closes the drawer and only the selected feed shows a pencil; compact stacked rows with a 44px star; tapping a row opens the article and marks it read; tapping the star saves without opening it.
-- **both** — no script errors on load; a 500 from `/api/articles` shows the server-error message while an aborted request still says it couldn't reach the server, and a 503 during refresh is reported as a server error; page load refreshes without `force` while a click on Refresh sends `?force=1`; Add feed defaults its category to the selected one; Add category / Add feed highlight while their form is open and swap; adding a category works; the four Customization buttons match the appearance control's radius, weight, font size and height; forcing Light/Dark updates both `theme-color` metas and System restores them; All Feeds renders 100 rows and grows on "Show more"; images are lazy and rows show feed icons, not photos.
+| Dependency | Pinned version | Why needed | Known risks |
+|---|---|---|---|
+| Node.js | `>=22` (image `node:22-slim`) | Runtime; built-in `fetch()` and test runner | `better-sqlite3`'s prebuilt binary needs Debian (slim), not alpine |
+| express | 4.22.2 | HTTP server and static serving | Express 4 doesn't catch rejected async handlers (see Auto-refresh) |
+| better-sqlite3 | 12.11.1 | SQLite access | Native module; the reason there's no standalone installer |
+| rss-parser | 3.13.0 | Parses feed XML | Its `utils.stripHtml` is replaced at startup; startup throws if that internal goes missing (see Architecture) |
+| @google-cloud/storage | 8.2.0 | Snapshot uploads to the bucket (hosted only) | Within the same Google Cloud project as the app (see Hosted durability) |
+| compression | 1.8.2 | gzip/brotli for phones (see Design decisions) | — |
+| react, react-dom | 19.2.7 | Frontend UI | — |
+| vite, @vitejs/plugin-react | 8.1.3, 6.0.3 | Frontend dev server and build | — |
+| @playwright/test | 1.63.0 | Browser end-to-end tests | Needs Chromium installed in CI |
+| oxlint | 1.72.0 | Frontend lint | — |
 
-Tests share one database, so they use unique names and avoid asserting exact totals that other tests can change (`Add category` adds one that persists for the run). To confirm the suite actually catches regressions, the original pencil bug was reintroduced temporarily: three mobile tests failed.
+## 9. Deployment, configuration, and rollout
 
-CI (`.github/workflows/ci.yml`) installs Chromium and runs this suite after the backend tests and frontend lint/build; on failure it uploads the HTML report and traces as an artifact.
+- **How it runs (where, how started):** locally as a single process (`npm start` from the repo root, or the `Feed Reader.command` launcher) or as two processes for frontend development; hosted as one Cloud Run instance behind IAP. Detail in Running it and Hosted durability below, and in `DEPLOY.md`.
+- **Configuration needed:** `FEED_READER_DATA_DIR` (see Data Directory), `HOST`, `ALLOWED_HOSTS`, `SQLITE_JOURNAL_MODE`, `FEED_READER_SNAPSHOT_BUCKET` (turns hosted durability on) and `FEED_READER_SNAPSHOT_OBJECT` (default `feed-reader.db`).
+- **Release mode:** direct. Hosted durability is behind the `FEED_READER_SNAPSHOT_BUCKET` setting, so running locally is unchanged. No dry-run mode is described; the original spec does not include one.
+- **Signals to watch (a few):** ERROR logs containing "malformed" or "restored from older snapshot", the WARNING on a generation conflict, and 5xx responses for `/api/*` (see Future enhancements, Alerting, and the recovery runbook in `DEPLOY.md`). Alerting is deliberately not set up yet.
+- **Rollback trigger:** not defined in the original spec. For data, bucket versioning (an older snapshot restores automatically, with an ERROR log) and the recovery runbook in `DEPLOY.md` are the recovery path. A concrete watch-and-threshold rule for undoing a deploy is an open item.
+- **Docs to update with this change:** this spec, `README.md`, `docs/DEPLOY.md`.
 
-## Running it
+### Hosted durability
+
+How the hosted (Cloud Run) service keeps its data, and why it works this way. Operational detail and the recovery runbook are in `DEPLOY.md` ("Data durability" and "Recovery runbook"). All of this is off unless `FEED_READER_SNAPSHOT_BUCKET` is set, so running locally is unchanged.
+
+**The design**: SQLite runs on the container's local disk, in WAL mode, as it does locally. The Cloud Storage bucket holds whole, consistent snapshots of it, uploaded through the Cloud Storage API (`@google-cloud/storage`), never through a mounted filesystem. An object upload either fully happens or doesn't, so the bucket can never contain a half-written database, and each instance has its own private copy.
+
+- **At startup** (`restoreFromSnapshot`, before the database is opened): download the bucket's current object and run SQLite's full `integrity_check` on it. If it passes, it becomes the local database. If it fails, try older versions (bucket versioning is on), newest first, up to 20, and use the first that passes, logging at ERROR `restored from older snapshot: generation …` with what was skipped, then upload that copy over the damaged object right away. A file that is empty or has no tables counts as damaged (SQLite accepts both as valid). If the object doesn't exist, start with an empty database and say so loudly (a brand-new deployment). The server doesn't listen until this finishes, so Cloud Run's startup probe keeps traffic away.
+- **After a write** (`snapshotAfterWrites`, middleware on every non-GET request): the response is held until a snapshot containing the write has been uploaded (`db.backup()`, an online backup that is safe while the database is in use; the live file is never uploaded). Cloud Run throttles the CPU almost to zero once a response is sent, so a timer or an after-response hook can't be relied on; this is also why every write route, including `POST /api/refresh` and OPML import, goes through one middleware and not per-route code. Writes are detected with `SELECT total_changes()`, which also catches background writes, and nothing is uploaded when nothing changed. Overlapping uploads are combined: one running, one queued for everyone else, never two at once.
+- **Generation guard**: each upload is conditional on the object still being the generation this instance last saw (`ifGenerationMatch`). A mismatch means another instance wrote in between (an old revision finishing requests during a deploy overlap). **The live instance wins**: a normal flush overwrites, with a WARNING saying the other instance's recent changes are lost; the final flush at shutdown drops its own upload instead, because there the newer data belongs to the instance that's staying. Preventing the loss entirely would need a lease or lock that makes the new instance wait for the old one, which isn't worth the complexity for one user — a deploy overlap costs at most a few seconds of read/saved marks, and the guard makes that visible in the logs instead of silent.
+- **At shutdown** (SIGTERM, which Cloud Run sends about 10 s before stopping an instance): stop accepting connections, take one last snapshot (bounded to 8 s), exit. It doesn't wait for a long refresh still running; whatever it committed is already in the snapshot, and refresh is idempotent.
+- **If an upload fails**, the write's response still goes out (the change is already applied locally, and a client retrying a toggle such as "save" would undo it), the failure is logged at ERROR, and the next flush retries. So the invariant "once the client sees success, the change is in the bucket" holds except while the bucket is unreachable.
+- **It never starts empty by accident.** Any failure to look at the bucket (network, permissions) or to find an intact snapshot exits non-zero. A wrong bucket name does too: Cloud Storage answers 404 for both a missing object and a missing bucket, so on a 404 the adapter checks the bucket exists before treating it as "no snapshot yet". Starting empty and then uploading would replace the real data at the first write (versioning would make that recoverable, but it is the worst way this design can fail).
+
+**Measured** (a laptop talking to a us-west1 bucket, then the live service): a write takes about 140 ms longer than without snapshots (median, 8 writes: 140 ms vs 1 ms); a cold start restores in about a second; a refresh of all 17 feeds took 1.7 s, where under the old mounted-bucket setup refreshes were hitting Cloud Run's 300 s request timeout.
+
+**Why this exists (Oct 2026)**: the first hosted version ran SQLite directly on a Cloud Storage FUSE mount in `DELETE` journal mode. Cloud Storage can't modify part of an object, so every SQLite commit re-uploaded the whole file (839 object versions in a few days, in bursts of dozens per second), with no real file locking. On Oct 7 the database was corrupted: the primary-key index stopped matching the articles table (so 254 article ids were stored twice) and the last write left the table itself damaged. The likely causes are an interrupted write (refreshes were timing out at 300 s mid-write) or an old and a new revision both writing during a deploy; it isn't proven. The error the app showed ("couldn't reach the server") was misleading — the server was up and returning 500s — which is why server errors and network failures now have separate messages. Recovery is written up in DEPLOY.md's runbook.
+
+**Alternatives considered**: keep the FUSE mount and tune it (the failure modes come from SQLite-over-FUSE itself); more instances (worse: more uncoordinated writers); **Litestream** (ships only the changes and gives point-in-time history, but it's a second process in the container and, with request-based CPU billing, would mostly rely on a final flush at shutdown anyway — no real advantage at 2 MB; it's the next step if the database grows); Firestore or Cloud SQL (removes this whole class of problem but means rewriting the data layer, and Cloud SQL has a monthly cost); a VM with a persistent disk (SQLite just works, but IAP on a VM needs a load balancer, which costs far more than the app). The choice of `@google-cloud/storage` over plain `fetch` against the JSON API is deliberate: it handles credentials from Cloud Run's metadata server, retries and generation preconditions, which would otherwise be hand-maintained; it's a dependency, but within the same Google Cloud project that already hosts the app, so the "no third-party services" principle isn't affected.
+
+**Growth path**: now, local SQLite plus whole-file snapshots (good to a few tens of MB and one user). At roughly 50–100 MB, when cold starts and upload time become noticeable, move the snapshot module to Litestream. Beyond one user or one instance it's a redesign anyway (accounts, per-user data): a managed database (Cloud SQL Postgres or Firestore) and a scheduled server-side refresh instead of refreshing on page load. The local disk on Cloud Run is memory-backed, so the database counts against the instance's memory limit (512 MiB by default); fine at a few MB.
+
+### Running it
 
 **Double-click launcher** (`Feed Reader.command`, repo root): the easiest day-to-day option — no terminal typing required. Double-clicking it in Finder opens a Terminal window that starts the app (`npm start` under the hood) and, once it responds, opens `http://localhost:3001` in your default browser automatically. If the app is already running, it just re-opens the browser instead of starting a second instance. Leave that Terminal window open while you use the app — closing it (or Ctrl+C) stops the server. It's a plain shell script (no bundling, no installer, no native dependencies of its own), executable via its own file permission bit, checked into the repo like any other file — see Design decisions for why this was chosen over a true bundled/standalone executable.
 
@@ -389,3 +532,21 @@ cd web && npm run dev      # http://localhost:5173
 Open `http://localhost:5173` in Firefox. Both must be running simultaneously; the web dev server proxies API calls to the backend. The backend has no hot-reload either way — restart it manually after any change under `server/src/`.
 
 **Hosted (Cloud Run)**: the `Dockerfile` builds one image (the Express API plus the built frontend, on `node:22-slim` so `better-sqlite3`'s prebuilt binary works). `DEPLOY.md` covers the deploy itself: the snapshot bucket setting, `--max-instances=1` (SQLite wants one writer), data durability and the recovery runbook, IAP (including the custom OAuth client a Gmail account needs), and troubleshooting.
+
+## Non-goals / deferred
+
+The "Future enhancements" section of the original spec, kept whole: ideas that are wanted in some form but not decided on, plus one that is deliberately not built.
+
+### Future enhancements
+
+Features that are wanted in some form but not yet decided on or committed to the current design — distinct from Known Gaps above, which are missing pieces of already-committed scope. No timeline or priority implied by the order below.
+
+- **Search for feeds by keyword ("find me cricket feeds") — deliberately not implemented, because it would require a third-party service.** This app's founding constraint is *no third-party services* (see the intro and README): everything it fetches comes from the publishers' own sites, nothing goes through anyone else's servers, and nothing about what you read or look for leaves your machine. Finding feeds *by topic or name* needs a searchable index of feeds, and RSS itself has no directory or search mechanism — so any implementation has to lean on someone else's service: a web search engine (needs an API key or paid tier, or scraping against its terms — and its results are web pages, not feeds, so a second step would still be needed to extract the feed from each one), or a feed-directory service such as Feedly's (to our knowledge only unofficial, undocumented endpoints exist for this, with no guarantee they stay available). Either one would (1) stop working whenever that provider changes or withdraws it, (2) put a log of your interests in a third party's hands — the opposite of "no tracking", and (3) bring API-key management with it. It's the same trade-off that ruled out popularity-based Today ranking (see Design decisions). Not ruled out: a **curated directory bundled in the repo** (no runtime dependency, but it only covers what someone curates and goes stale). Also a separate question, still open and needing no third party: **discovering a feed from a site URL you already have** (read the page's `<link rel="alternate" type="application/rss+xml">` tags, fetched through `safeFetch`) — that fixes "pasted a homepage instead of a feed URL" without any index.
+- **Alerting on the hosted service** — deliberately not set up for now (there is one user). A log-based alert in Cloud Monitoring on `severity>=ERROR` lines containing "malformed" or "restored from older snapshot", and on 5xx responses for `/api/*`, sent to an email channel. The reason to revisit: the Oct 2026 outage had a warning two days earlier (one "malformed" error on Oct 5) that nobody saw. Until then, look at the logs with the commands in DEPLOY.md's recovery runbook whenever something seems off.
+- **Keyboard shortcuts** — considered, not yet decided on; needs an actual shortcut scheme designed first.
+- **One automatic retry on an empty refresh response** — raised by a one-off refresh failure that turned out to be a transient empty body from the site's own CDN (see Design decisions), not a bug here. Not implemented since a single occurrence isn't evidence of a pattern worth the extra complexity; worth adding if it recurs, for this feed or others.
+
+## Change log
+
+- 2026-10-06: initial spec (`docs/SPEC.md`)
+- 2026-10-10: moved to `docs/adr/` and restructured to the sections of `docs/SPEC_TEMPLATE.md`. Original text kept verbatim under its original section names; the template's summary parts (requirements, data flow, dependency map, schema table, edge-case table, dependency versions, rollout) are new and derived from it.

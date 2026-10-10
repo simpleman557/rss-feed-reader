@@ -70,7 +70,7 @@ gcloud iap web add-iam-policy-binding --resource-type=cloud-run --service=feed-r
 The database is SQLite, kept on the container's local disk. The bucket holds **whole,
 consistent snapshots** of it, uploaded through the Cloud Storage API (never a mounted
 filesystem). An upload either fully happens or doesn't, so the bucket can't hold a
-half-written file. The design and the reasoning behind it are in `SPEC.md` ("Hosted
+half-written file. The design and the reasoning behind it are in `adr/2026-10-06-feed-reader-spec.md` ("Hosted
 durability"); this is how it behaves in operation.
 
 - **Startup.** The server downloads the bucket's current object and runs SQLite's full
@@ -181,7 +181,7 @@ After deploying, with the app opened once and a star or "read" mark made:
 
 **Alerting is not set up** (there's one user). Adding a log-based alert for `severity>=ERROR` lines
 containing "malformed" or "restored from older snapshot", and for 5xx on `/api/*`, is listed in
-`SPEC.md` under Future enhancements.
+`adr/2026-10-06-feed-reader-spec.md` under Future enhancements.
 
 ## Moving an existing deployment off the old mounted bucket
 
@@ -268,7 +268,7 @@ gcloud iap settings get --resource-type=cloud-run --service=feed-reader \
   handles that (a few seconds of the outgoing instance's changes can be lost, and it's logged).
 - The local disk in Cloud Run is backed by memory, so the database counts against the instance's
   memory limit (512 MiB by default). Fine at a few MB; watch it if the database grows past tens of MB,
-  which is also when to move the snapshots to Litestream (see `SPEC.md`, Hosted durability).
+  which is also when to move the snapshots to Litestream (see `adr/2026-10-06-feed-reader-spec.md`, Hosted durability).
 - Every write takes about 140 ms longer than without snapshots (it waits for the upload). If that
   ever feels slow on a phone, the fallback is instance-based billing (`--no-cpu-throttling`) with a
   short delayed flush, which costs a little more.

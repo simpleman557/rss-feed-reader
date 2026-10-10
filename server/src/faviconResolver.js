@@ -1,5 +1,5 @@
 // Discovers a feed's real site icon instead of guessing one. Three ways a guess breaks
-// (all hit in practice, see docs/SPEC.md's design decisions):
+// (all hit in practice, see docs/adr/2026-10-06-feed-reader-spec.md's design decisions):
 //   1. A naive `{origin}/favicon.ico` path is a legacy convention; many current sites
 //      don't serve anything there and instead redirect to the homepage, which isn't an
 //      image at all.
