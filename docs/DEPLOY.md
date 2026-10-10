@@ -261,6 +261,36 @@ gcloud iap settings get --resource-type=cloud-run --service=feed-reader \
   authenticated localhost tunnel, `gcloud run services proxy feed-reader --region=$REGION`.
   This works only from a machine with gcloud installed.
 
+## Installing on an iPhone home screen
+
+The app ships a web manifest and icons (`web/public/`), so it can be added to the home screen.
+Spec and test results: `adr/2026-10-10-iphone-pwa.md`.
+
+1. In **Safari** (other iPhone browsers can't add it), open the service URL and sign in.
+2. Tap Share, then **Add to Home Screen**, then Add.
+3. Launch it from the new icon. It opens full screen with no Safari toolbar.
+
+What was seen on a real iPhone: no second Google sign-in was asked for, and tapping an article
+opens an in-app browser sheet with an X (top left) and a back button (bottom left). Either one
+returns to the reader at the same scroll position, with the article marked read.
+
+Notes:
+- The manifest link sends credentials (`crossorigin="use-credentials"` in `web/index.html`).
+  Without that the browser fetches it without the IAP cookie and gets Google's sign-in page.
+  To check after a deploy, open `<service-url>/manifest.webmanifest` in Safari while signed in:
+  it should show JSON.
+- There is no service worker, so nothing is cached for offline use and a deploy reaches the
+  installed app like any page load.
+- **If the IAP session expires** while the app is open, background requests may fail and show
+  the error banner instead of a sign-in page. This has not been observed yet. Closing the app
+  and opening it again is the first thing to try; record what actually happens here.
+- **Re-adding the icon loses paywall logins.** iOS caches the home-screen icon when it is added,
+  so a new icon means deleting and re-adding the app. Each home-screen entry keeps its own logins
+  for the in-app sheet, so you sign in again to paywalled sources in the new one (seen on a real
+  iPhone; Google sign-in was not asked for again). Add the new entry first and keep the old one
+  until the logins are back.
+- To undo it, delete the icon from the home screen. Nothing on the server changes.
+
 ## Limits
 
 - `max-instances=1` is still required: SQLite wants one writer. It does **not** cover a deploy,
