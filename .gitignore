@@ -21,3 +21,6 @@ iap_settings.yaml
 web/e2e/.data/
 web/test-results/
 web/playwright-report/
+
+# Personal working-agreement notes: kept on disk and used locally, never committed
+docs/PHILOSOPHY.md
