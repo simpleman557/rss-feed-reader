@@ -8,6 +8,15 @@
          theme-init.js overwrite both when Light/Dark is forced. Keep in sync with --bg. -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f7f8fa" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0c11" />
+    <!-- Home-screen install (iPhone "Add to Home Screen"). The manifest link must send
+         credentials: the whole service sits behind IAP, and a cookie-less fetch would be
+         redirected to Google sign-in. No service worker on purpose. See
+         docs/adr/2026-10-10-iphone-pwa.md. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Feed Reader" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Feed Reader</title>
     <!-- Plain render-blocking script (not module/defer) so the theme is set before first
          paint; external so the CSP can stay script-src 'self'. See public/theme-init.js. -->
