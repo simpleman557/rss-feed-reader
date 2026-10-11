@@ -3,7 +3,7 @@
 <!-- Mode: full. It touches several files (new manifest, new icons, index.html) and depends on
      behavior outside our code (iOS, Google sign-in), so every section is kept. -->
 
-**Status:** Approved
+**Status:** Implemented
 **Date:** 2026-10-10
 **Scope in one sentence:** Make the hosted feed reader installable on an iPhone home screen so article links open with a way back to the app, with no UI or access changes.
 
@@ -100,7 +100,7 @@ N/A: no data is stored or changed.
 - [ ] M-0 (manual, after deploy): signed in, open the manifest URL in Safari and confirm it loads.
 - [ ] M-1 (manual, real phone, run first): install, launch, sign in once, check the pass criteria above.
 - [ ] M-2 (manual, real phone, only if M-1 passes): article link behavior, check the pass criteria above.
-- [ ] M-3 (manual, opportunistic): when the sign-in eventually expires, note what the app shows and whether force-quit and relaunch recovers it.
+- [x] M-3 (manual, opportunistic): when the sign-in eventually expires, note what the app shows and whether force-quit and relaunch recovers it. Observed: see the change log entry dated 2026-10-11.
 
 ## 7. Unit tests
 
@@ -125,6 +125,7 @@ N/A: there is no new logic. A unit test would only mirror the file contents.
 ## Change log
 
 - 2026-10-10: initial draft
+- 2026-10-11: marked Implemented after about a day of use on the iPhone. Paywall logins in the new home-screen entry survived swiping the app away and a full phone reboot. M-3 observed: after the swipe-away and reboot, less than 24 hours after the previous sign-in, the app asked for the Google password again; after signing in it loaded normally, with no error banner or broken screen. The cause is not established. A read-only check of the service's IAP settings (`gcloud iap settings get`) shows only the OAuth client for the personal-Gmail setup and no re-authentication limit, so nothing on the service shortens the session on purpose. It may be Google's default session behavior or the home-screen app not keeping the session; not tested against a plain Safari tab. Accepted as a minor inconvenience. Possible follow-up if it becomes annoying: set an explicit IAP re-authentication period (not attempted; needs its own spec and a check that a longer period is allowed).
 - 2026-10-10: amendment: replaced the icon (see the RESOLVED note above). `favicon.svg` and the three PNGs are regenerated from one drawing (rounded for the tab, full square for iOS). No change to the manifest, tags, or tests. A deploy plus a re-add of the home-screen icon is needed to see it on the phone, because iOS caches the icon when it is added.
 - 2026-10-10: redeployed with the new icon (revision `feed-reader-00016-zd4`). On the phone the new icon showed correctly. A second home-screen entry did not carry over paywall logins from the old one, so those sources need signing in again in the new entry (documented in `docs/DEPLOY.md`). One feed's links don't open its native app, same as before the change, so it's unrelated. Next: sign in again, use the new icon for about a day, confirm logins persist across closing the app, then delete the old icon.
 - 2026-10-10: deployed (revision `feed-reader-00015-86k`) and tested on a real iPhone. M-0 passed (manifest shows JSON). M-1 passed (launches full screen, feeds load, status bar looks normal; no second sign-in was asked for, so A3 was wrong). M-2 passed (article opens in an in-app sheet with an X at the top left and a back button at the bottom left; both return to the same scroll position, article marked read), so A1 and A2 held. Light and dark mode both look fine in the installed app (M-1 complete). Also seen on the phone: paywalled sources let the user log in inside the in-app sheet, and two sources opened their own native apps directly, each with a back-to-Feed-Reader control. Still to do before marking Implemented: about a day of normal use, and M-3 when a sign-in eventually expires. README and DEPLOY.md updated.
