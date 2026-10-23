@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
+    "test:unit": "node --test test/*.test.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {

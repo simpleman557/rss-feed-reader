@@ -27,6 +27,7 @@ jobs:
         run: |
           npm ci
           npm run lint
+          npm run test:unit
           npm run build
       - name: Install Playwright browser
         working-directory: web

@@ -23,6 +23,7 @@ import { parseOPML } from "./data/opml";
 import { refreshAllFeeds, refreshFeed } from "./data/feeds";
 import { getStoredTheme, applyTheme } from "./theme";
 import { describeFailure } from "./data/errors";
+import { mergeSnapshot } from "./snapshot";
 import "./App.css";
 
 function isToday(isoDate) {
@@ -187,6 +188,11 @@ export default function App() {
       // see the snapshot comment above for why a background refresh must not do this.
       if (resetSnapshot) {
         setSnapshot(new Map(arts.map((a) => [a.id, { read: a.read, saved: a.saved }])));
+      } else {
+        // A silent refresh still has to record the articles it brought in, as they arrived:
+        // with no entry an article counts as "already read", so a new one would vanish the
+        // instant it was read. Existing entries are left exactly as they were.
+        setSnapshot((prev) => mergeSnapshot(prev, arts));
       }
     } catch (err) {
       // The whole app depends on the server; say plainly what went wrong (unreachable vs.

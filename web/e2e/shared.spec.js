@@ -141,4 +141,44 @@ test.describe("article list", () => {
     await expect(img).toHaveAttribute("loading", "lazy");
     await expect(page.locator(".article-image--photo")).toHaveCount(0);
   });
+
+  // Regression: an article fetched by a silent background refresh (what a phone does on
+  // resuming from sleep) has to linger greyed out when read, like any other, rather than
+  // vanishing the instant it is read.
+  test("an article that arrived in a silent background refresh stays, greyed out, once read", async ({ page }) => {
+    await page.clock.install();
+    let arrived = false;
+    await page.route("**/api/articles", async (route) => {
+      const response = await route.fetch();
+      const list = await response.json();
+      if (arrived) {
+        list.push({
+          ...list[0],
+          id: "e2e-new-arrival",
+          title: "E2E new arrival",
+          link: "https://new.example.invalid/article",
+          isoDate: new Date().toISOString(),
+          read: false,
+          readAt: null,
+          saved: false,
+        });
+      }
+      await route.fulfill({ response, json: list });
+    });
+    await page.route("**/api/articles/e2e-new-arrival/read", (route) =>
+      route.fulfill({ json: { read: true, readAt: new Date().toISOString() } })
+    );
+
+    await page.goto("/"); // Today is the default view
+    await expect(page.locator(".article-item").first()).toBeVisible();
+    await expect(page.getByText("E2E new arrival")).toHaveCount(0);
+
+    arrived = true;
+    await page.clock.fastForward("16:00"); // past the 15-minute background refresh
+    const row = page.locator(".article-item").filter({ hasText: "E2E new arrival" });
+    await expect(row).toBeVisible();
+
+    await row.getByRole("link").click();
+    await expect(row).toHaveClass(/\bread\b/);
+  });
 });
