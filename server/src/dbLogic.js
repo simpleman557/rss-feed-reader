@@ -260,6 +260,9 @@ export function createDb(db) {
     requireCategory(categoryId);
     const feed = db.prepare("SELECT * FROM feeds WHERE id = ?").get(feedId);
     if (!feed) return;
+    // Already in that category: not a move. Without this, a drop that lands on the feed's
+    // own category (e.g. released over a sibling feed) sent it to the end of the list.
+    if ((feed.categoryId ?? null) === categoryId) return;
     const order = bucketOf(db.prepare("SELECT * FROM feeds WHERE id != ?").all(feedId), categoryId).length;
     db.prepare('UPDATE feeds SET categoryId = ?, "order" = ? WHERE id = ?').run(categoryId, order, feedId);
   }

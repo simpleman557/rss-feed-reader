@@ -92,6 +92,38 @@ test.describe("desktop sidebar", () => {
   });
 });
 
+test.describe("desktop feed dragging", () => {
+  test("dropping a feed on its own category doesn't reorder it", async ({ page }) => {
+    // Needs three or more feeds in one category: with two, the bug (dropped feed sent to the
+    // end) ties with the last feed's order and happens to look unchanged. Made through the
+    // API with a unique name so it doesn't disturb the seeded categories other tests use.
+    const name = `Zz drag ${Date.now()}`;
+    const { id: categoryId } = await (await page.request.post("/api/categories", { data: { name } })).json();
+    const titles = ["First feed", "Second feed", "Third feed"];
+    for (const title of titles) {
+      const url = `https://${title.split(" ")[0].toLowerCase()}.example.invalid/feed.xml`;
+      await page.request.post("/api/feeds", { data: { url, categoryId, title } });
+    }
+
+    await page.goto("/");
+    const cat = category(page, name);
+    await cat.hover();
+    await cat.locator(".expand-btn").click();
+    const feeds = page.locator(".feed-list .feed-item");
+    await expect(feeds).toHaveText(titles);
+
+    // Released over a sibling in the same category: not a move, so nothing reorders.
+    await page.locator(".feed-item", { hasText: "First feed" }).dragTo(
+      page.locator(".feed-item", { hasText: "Third feed" })
+    );
+    await expect(feeds).toHaveText(titles);
+    await page.reload();
+    await cat.hover();
+    await cat.locator(".expand-btn").click();
+    await expect(feeds).toHaveText(titles); // the stored order, not just the on-screen one
+  });
+});
+
 test.describe("desktop article list", () => {
   test("rows are the compact single-line layout", async ({ page }) => {
     await showAllFeeds(page);

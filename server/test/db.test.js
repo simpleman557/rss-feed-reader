@@ -175,6 +175,40 @@ describe("updateFeedCategory", () => {
     const feedId = seedFeed(testDb, categoryId);
     assert.throws(() => api.updateFeedCategory(feedId, 999), /doesn't exist/i);
   });
+
+  // Feeds inside a category are in a fixed order. Dropping a feed on its own category (easy
+  // to do by letting go over a sibling feed) is not a move, and must not reorder anything —
+  // it used to send the feed to the end of the list.
+  it("leaves the order alone when a feed is dropped on its own category", () => {
+    const { testDb, api } = setup();
+    const category = seedCategory(testDb, "News");
+    const ids = ["A", "B", "C", "D"].map((title, i) =>
+      seedFeed(testDb, category, { url: `https://example.com/${title}.xml`, title, order: i })
+    );
+    const titlesInOrder = () => api.getFeeds().map((f) => f.title);
+    assert.deepEqual(titlesInOrder(), ["A", "B", "C", "D"]);
+
+    api.updateFeedCategory(ids[0], category); // drop the first feed on its own category
+    assert.deepEqual(titlesInOrder(), ["A", "B", "C", "D"]);
+
+    api.updateFeedCategory(ids[2], category); // and a middle one
+    assert.deepEqual(titlesInOrder(), ["A", "B", "C", "D"]);
+  });
+
+  it("still appends a feed to the end of a different category", () => {
+    const { testDb, api } = setup();
+    const from = seedCategory(testDb, "From");
+    const to = seedCategory(testDb, "To");
+    seedFeed(testDb, to, { url: "https://example.com/x.xml", title: "X", order: 0 });
+    seedFeed(testDb, to, { url: "https://example.com/y.xml", title: "Y", order: 1 });
+    const moving = seedFeed(testDb, from, { url: "https://example.com/a.xml", title: "A", order: 0 });
+
+    api.updateFeedCategory(moving, to);
+    assert.deepEqual(
+      api.getFeeds().filter((f) => f.categoryId === to).map((f) => f.title),
+      ["X", "Y", "A"]
+    );
+  });
 });
 
 describe("syncFeedMetadata", () => {
